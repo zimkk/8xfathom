@@ -1,0 +1,100 @@
+import { NextResponse } from 'next/server'
+import { auth } from '@/lib/auth'
+import { getDb } from '@fathom/db'
+import { meetings, transcriptSegments, meetingParticipants } from '@fathom/db/schema'
+import { eq, and, or, ilike, desc } from 'drizzle-orm'
+
+export async function GET(request: Request) {
+  const session = await auth()
+  const { searchParams } = new URL(request.url)
+  const q = searchParams.get('q')?.trim()
+  const limit = Math.min(parseInt(searchParams.get('limit') ?? '20'), 50)
+
+  if (!q || q.length < 2) {
+    return NextResponse.json({ results: [], query: q ?? '', total: 0 })
+  }
+
+  const db = getDb()
+  const results: Array<{
+    meeting: { id: string; title: string; startsAt: string | null; durationMs: number | null }
+    matchType: string
+    snippet: string
+    startMs?: number
+    speakerName?: string
+    score: number
+  }> = []
+
+  const userCondition = session?.user?.id
+    ? or(eq(meetings.userId, session.user.id), eq(meetings.visibility, 'demo'))
+    : eq(meetings.visibility, 'demo')
+
+  // Title matches
+  const titleMatches = await db
+    .select({ id: meetings.id, title: meetings.title, startsAt: meetings.startsAt, durationMs: meetings.durationMs })
+    .from(meetings)
+    .where(and(userCondition, ilike(meetings.title, `%${q}%`)))
+    .limit(5)
+
+  for (const m of titleMatches) {
+    results.push({
+      meeting: {
+        id: m.id,
+        title: m.title,
+        startsAt: m.startsAt?.toISOString() ?? null,
+        durationMs: m.durationMs,
+      },
+      matchType: 'title',
+      snippet: m.title,
+      score: 1.0,
+    })
+  }
+
+  // Transcript matches
+  const matchedMeetingIds = new Set(results.map((r) => r.meeting.id))
+  const transcriptMatches = await db
+    .select({
+      segId: transcriptSegments.id,
+      text: transcriptSegments.text,
+      speakerName: transcriptSegments.speakerName,
+      startMs: transcriptSegments.startMs,
+      meetingId: transcriptSegments.meetingId,
+      title: meetings.title,
+      startsAt: meetings.startsAt,
+      durationMs: meetings.durationMs,
+    })
+    .from(transcriptSegments)
+    .innerJoin(meetings, eq(transcriptSegments.meetingId, meetings.id))
+    .where(and(userCondition, ilike(transcriptSegments.text, `%${q}%`)))
+    .limit(limit)
+
+  for (const match of transcriptMatches) {
+    if (!matchedMeetingIds.has(match.meetingId)) {
+      matchedMeetingIds.add(match.meetingId)
+    }
+    // Snippet with context around match
+    const idx = match.text.toLowerCase().indexOf(q.toLowerCase())
+    const start = Math.max(0, idx - 60)
+    const end = Math.min(match.text.length, idx + q.length + 60)
+    const snippet = (start > 0 ? '…' : '') + match.text.slice(start, end) + (end < match.text.length ? '…' : '')
+
+    results.push({
+      meeting: {
+        id: match.meetingId,
+        title: match.title,
+        startsAt: match.startsAt?.toISOString() ?? null,
+        durationMs: match.durationMs,
+      },
+      matchType: 'transcript',
+      snippet,
+      startMs: match.startMs,
+      speakerName: match.speakerName,
+      score: 0.8,
+    })
+  }
+
+  return NextResponse.json({
+    results: results.slice(0, limit),
+    query: q,
+    total: results.length,
+  })
+}

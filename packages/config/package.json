@@ -1,0 +1,10 @@
+{
+  "name": "@fathom/config",
+  "version": "0.1.0",
+  "private": true,
+  "exports": {
+    "./typescript/*": "./typescript/*",
+    "./eslint": "./eslint/index.js",
+    "./tailwind": "./tailwind/index.js"
+  }
+}

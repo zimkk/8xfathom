@@ -1,0 +1,23 @@
+{
+  "name": "@fathom/integrations",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./recall": "./src/recall/index.ts",
+    "./google": "./src/google/index.ts",
+    "./ai": "./src/ai/index.ts",
+    "./storage": "./src/storage/index.ts"
+  },
+  "dependencies": {
+    "@fathom/core": "workspace:*",
+    "@fathom/db": "workspace:*",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "@fathom/config": "workspace:*"
+  }
+}

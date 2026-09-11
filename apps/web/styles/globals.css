@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 98%;
+    --foreground: 224 71.4% 4.1%;
+    --card: 0 0% 100%;
+    --card-foreground: 224 71.4% 4.1%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 71.4% 4.1%;
+    --primary: 243 75% 59%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 14.3% 95.9%;
+    --secondary-foreground: 220.9 39.3% 11%;
+    --muted: 220 14.3% 95.9%;
+    --muted-foreground: 220 8.9% 46.1%;
+    --accent: 220 14.3% 95.9%;
+    --accent-foreground: 220.9 39.3% 11%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 20% 98%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 243 75% 59%;
+    --radius: 0.625rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+}
+
+/* Status colors */
+.status-scheduled { @apply text-blue-600 bg-blue-50; }
+.status-bot_queued { @apply text-blue-600 bg-blue-50; }
+.status-bot_starting { @apply text-amber-600 bg-amber-50; }
+.status-waiting_for_admission { @apply text-amber-600 bg-amber-50; }
+.status-recording { @apply text-red-600 bg-red-50; }
+.status-processing { @apply text-purple-600 bg-purple-50; }
+.status-ready { @apply text-green-600 bg-green-50; }
+.status-denied { @apply text-red-600 bg-red-50; }
+.status-failed { @apply text-red-600 bg-red-50; }
+.status-cancelled { @apply text-gray-600 bg-gray-50; }
+.status-ended { @apply text-gray-600 bg-gray-50; }
+
+/* Recording pulse */
+@keyframes recording-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.recording-dot {
+  animation: recording-pulse 2s ease-in-out infinite;
+}

@@ -1,0 +1,22 @@
+{
+  "name": "@fathom/jobs",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "dev": "trigger dev",
+    "deploy": "trigger deploy"
+  },
+  "dependencies": {
+    "@fathom/core": "workspace:*",
+    "@fathom/db": "workspace:*",
+    "@fathom/integrations": "workspace:*",
+    "@trigger.dev/sdk": "^3.0.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "@fathom/config": "workspace:*"
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "name": "fathom-8x",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Fathom 8x — Google Meet AI Notetaker",
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "test": "turbo test",
+    "db:migrate": "pnpm --filter @fathom/db migrate",
+    "db:push": "pnpm --filter @fathom/db push",
+    "db:studio": "pnpm --filter @fathom/db studio",
+    "seed": "pnpm --filter @fathom/scripts seed",
+    "seed:demo": "pnpm --filter @fathom/scripts seed:demo",
+    "format": "prettier --write \"**/*.{ts,tsx,md,json}\" --ignore-path .gitignore"
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3",
+    "turbo": "^2.3.3",
+    "typescript": "^5.6.3"
+  },
+  "packageManager": "pnpm@12.4.1",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "@img/sharp-libvips-linux-x64",
+      "@next/swc-linux-x64-gnu",
+      "protobufjs",
+      "unrs-resolver",
+      "sharp"
+    ]
+  }
+}
