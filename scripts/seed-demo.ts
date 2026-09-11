@@ -39,7 +39,7 @@ async function seedHeroMeeting() {
   console.log('Seeding hero meeting: Acme × Northstar Enterprise Implementation Planning...')
 
   const heroStartsAt = daysAgo(3)
-  const heroEndsAt = new Date(heroStartsAt.getTime() + 63 * 60 * 1000 + 24 * 1000)
+  const heroEndsAt = new Date(heroStartsAt.getTime() + 52 * 60 * 1000 + 30 * 1000)
 
   // Create the meeting
   const [meeting] = await db
@@ -52,7 +52,7 @@ async function seedHeroMeeting() {
       endsAt: heroEndsAt,
       actualStartedAt: heroStartsAt,
       actualEndedAt: heroEndsAt,
-      durationMs: 63 * 60 * 1000 + 24 * 1000,
+      durationMs: 52 * 60 * 1000 + 30 * 1000,
       platform: 'google_meet',
       status: 'ready',
       captureEnabled: true,
