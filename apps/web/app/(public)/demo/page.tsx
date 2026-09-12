@@ -1,5 +1,6 @@
 import Link from 'next/link'
-import { Mic, Calendar, Clock, Users } from 'lucide-react'
+import Image from 'next/image'
+import { Calendar, Clock, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { getDemoMeetings } from '@/lib/services/meeting-service'
 import { MeetingCard } from '@/components/meeting/meeting-card'
@@ -17,9 +18,7 @@ export default async function DemoPage() {
       <header className="border-b bg-white">
         <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary">
-              <Mic className="h-4 w-4 text-white" />
-            </div>
+            <Image src="/logo.svg" alt="" width={28} height={28} className="h-7 w-7" />
             <span className="font-semibold text-sm">Fathom 8x</span>
           </Link>
           <div className="flex items-center gap-3">
