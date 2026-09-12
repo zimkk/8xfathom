@@ -1,5 +1,6 @@
 import NextAuth from 'next-auth'
 import { DrizzleAdapter } from '@auth/drizzle-adapter'
+import { waitUntil } from '@vercel/functions'
 import { authConfig } from './config'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -70,15 +71,30 @@ function getNextAuth() {
               })
               .returning()
 
+            // The connection row is saved above (fast, needed before the OAuth
+            // callback can redirect). The actual calendar sync hits the live
+            // Google Calendar API and can take long enough to blow past
+            // Vercel's function timeout if awaited here, which would kill the
+            // whole callback mid-flight and bounce the user back to /login
+            // right after they granted access. Let it run in the background.
             if (connection) {
-              await syncUpcomingMeetings(user.id, account.access_token, connection.id)
-              await db
-                .update(calendarConnections)
-                .set({ lastSyncedAt: new Date() })
-                .where(eq(calendarConnections.userId, user.id))
+              const accessToken = account.access_token
+              waitUntil(
+                (async () => {
+                  try {
+                    await syncUpcomingMeetings(user.id!, accessToken, connection.id)
+                    await db
+                      .update(calendarConnections)
+                      .set({ lastSyncedAt: new Date() })
+                      .where(eq(calendarConnections.userId, user.id!))
+                  } catch (err) {
+                    console.error('Background calendar sync failed:', err)
+                  }
+                })()
+              )
             }
           } catch (err) {
-            console.error('Failed to sync calendar connection on sign-in:', err)
+            console.error('Failed to save calendar connection on sign-in:', err)
           }
         },
       },
