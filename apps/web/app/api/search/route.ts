@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { getDb } from '@fathom/db'
-import { meetings, transcriptSegments, meetingParticipants } from '@fathom/db/schema'
+import { meetings, transcriptSegments, meetingParticipants, meetingSummaries } from '@fathom/db/schema'
 import { eq, and, or, ilike, desc } from 'drizzle-orm'
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit'
 
@@ -97,6 +97,71 @@ export async function GET(request: Request) {
       startMs: match.startMs,
       speakerName: match.speakerName,
       score: 0.8,
+    })
+  }
+
+  // Participant matches
+  const participantMatches = await db
+    .select({
+      meetingId: meetingParticipants.meetingId,
+      displayName: meetingParticipants.displayName,
+      title: meetings.title,
+      startsAt: meetings.startsAt,
+      durationMs: meetings.durationMs,
+    })
+    .from(meetingParticipants)
+    .innerJoin(meetings, eq(meetingParticipants.meetingId, meetings.id))
+    .where(and(userCondition, ilike(meetingParticipants.displayName, `%${q}%`)))
+    .limit(5)
+
+  for (const match of participantMatches) {
+    if (matchedMeetingIds.has(match.meetingId)) continue
+    matchedMeetingIds.add(match.meetingId)
+    results.push({
+      meeting: {
+        id: match.meetingId,
+        title: match.title,
+        startsAt: match.startsAt?.toISOString() ?? null,
+        durationMs: match.durationMs,
+      },
+      matchType: 'participant',
+      snippet: match.displayName,
+      score: 0.7,
+    })
+  }
+
+  // Summary matches
+  const summaryMatches = await db
+    .select({
+      meetingId: meetingSummaries.meetingId,
+      overview: meetingSummaries.overview,
+      title: meetings.title,
+      startsAt: meetings.startsAt,
+      durationMs: meetings.durationMs,
+    })
+    .from(meetingSummaries)
+    .innerJoin(meetings, eq(meetingSummaries.meetingId, meetings.id))
+    .where(and(userCondition, ilike(meetingSummaries.overview, `%${q}%`)))
+    .limit(5)
+
+  for (const match of summaryMatches) {
+    if (matchedMeetingIds.has(match.meetingId)) continue
+    matchedMeetingIds.add(match.meetingId)
+    const idx = match.overview.toLowerCase().indexOf(q.toLowerCase())
+    const start = Math.max(0, idx - 60)
+    const end = Math.min(match.overview.length, idx + q.length + 60)
+    const snippet = (start > 0 ? '…' : '') + match.overview.slice(start, end) + (end < match.overview.length ? '…' : '')
+
+    results.push({
+      meeting: {
+        id: match.meetingId,
+        title: match.title,
+        startsAt: match.startsAt?.toISOString() ?? null,
+        durationMs: match.durationMs,
+      },
+      matchType: 'summary',
+      snippet,
+      score: 0.75,
     })
   }
 
