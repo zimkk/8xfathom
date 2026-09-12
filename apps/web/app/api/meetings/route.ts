@@ -51,6 +51,9 @@ export async function POST(request: Request) {
       source: 'manual',
       status: 'scheduled',
       visibility: 'private',
+      // Manually adding a meeting is explicit intent — always capture it
+      // regardless of the user's global recording preference.
+      captureOverride: 'enabled',
       startsAt: startsAt ? new Date(startsAt) : new Date(),
     })
     .returning()

@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { getDb } from '@fathom/db'
-import { meetings, userCapturePreferences, captureSessions, calendarConnections } from '@fathom/db/schema'
+import { meetings, userCapturePreferences, captureSessions, calendarConnections, calendarEvents, users } from '@fathom/db/schema'
 import { eq, and, gte, lte, isNotNull } from 'drizzle-orm'
+import { evaluateCaptureDecision, classifyMeeting } from '@fathom/core'
 
 // Default 60s (Hobby). Each bot schedule call is ~200ms so this handles ~200 meetings per run.
 
@@ -38,34 +39,54 @@ export async function GET(request: Request) {
   let totalSkipped = 0
 
   for (const { userId } of activeUsers) {
-    // Check user capture preferences
     const [prefs] = await db
       .select()
       .from(userCapturePreferences)
       .where(eq(userCapturePreferences.userId, userId))
       .limit(1)
 
-    if (!prefs || prefs.defaultMode === 'none') {
+    const defaultMode = prefs?.defaultMode ?? 'all'
+    if (defaultMode === 'none') {
       totalSkipped++
       continue
     }
 
-    // Find upcoming meetings without a capture session
+    const [user] = await db.select({ email: users.email }).from(users).where(eq(users.id, userId)).limit(1)
+    if (!user) continue
+
+    // Find upcoming meetings without a capture session, with attendee data for classification
     const upcomingMeetings = await db
-      .select()
+      .select({
+        meeting: meetings,
+        attendeeEmails: calendarEvents.attendeeEmails,
+      })
       .from(meetings)
+      .leftJoin(calendarEvents, eq(meetings.calendarEventId, calendarEvents.id))
       .where(
         and(
           eq(meetings.userId, userId),
           eq(meetings.status, 'scheduled'),
-          eq(meetings.captureEnabled, true),
           gte(meetings.startsAt, now),
           lte(meetings.startsAt, lookahead),
         ),
       )
 
-    for (const meeting of upcomingMeetings) {
+    for (const { meeting, attendeeEmails } of upcomingMeetings) {
       if (!meeting.meetingUrl) continue
+
+      const classification = classifyMeeting(attendeeEmails ?? [], user.email)
+      const decision = evaluateCaptureDecision({
+        defaultMode,
+        classification,
+        override: meeting.captureOverride,
+        meetingUrl: meeting.meetingUrl,
+        isCancelled: meeting.status === 'cancelled',
+      })
+
+      if (!decision.shouldCapture) {
+        totalSkipped++
+        continue
+      }
 
       // Skip if already has a capture session
       const [existingSession] = await db
@@ -82,7 +103,7 @@ export async function GET(request: Request) {
           meetingUrl: meeting.meetingUrl,
           title: meeting.title,
           startAt: meeting.startsAt ?? new Date(),
-          botDisplayName: 'Fathom Notetaker',
+          botDisplayName: prefs?.botDisplayName ?? 'Fathom Notetaker',
           metadata: {},
           consent: { enabled: false, message: '' },
         })

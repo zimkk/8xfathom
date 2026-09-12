@@ -126,6 +126,26 @@ export interface CaptureDecisionInput {
   isCancelled: boolean
 }
 
+function emailDomain(email: string): string {
+  return email.trim().toLowerCase().split('@')[1] ?? ''
+}
+
+/**
+ * internal: every attendee shares the signed-in user's email domain.
+ * external: at least one attendee is on a different domain.
+ * ambiguous: no attendee emails were available to compare (e.g. calendar sync
+ * didn't record any, or the event has no other attendees).
+ */
+export function classifyMeeting(attendeeEmails: string[], userEmail: string): MeetingClassification {
+  const userDomain = emailDomain(userEmail)
+  const otherDomains = attendeeEmails
+    .filter((email) => emailDomain(email) !== userDomain)
+    .map(emailDomain)
+
+  if (attendeeEmails.length === 0 || !userDomain) return 'ambiguous'
+  return otherDomains.length > 0 ? 'external' : 'internal'
+}
+
 export function evaluateCaptureDecision(input: CaptureDecisionInput): CaptureDecision {
   if (input.isCancelled) {
     return { shouldCapture: false, reason: 'cancelled' }
