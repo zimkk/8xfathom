@@ -57,8 +57,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  if (process.env['USE_MOCK_INTEGRATIONS'] === 'true' || !process.env['RECALL_API_KEY']) {
-    return NextResponse.json({ ok: true, skipped: true, reason: 'mock mode or no Recall key' })
+  if (!process.env['RECALL_API_KEY']) {
+    return NextResponse.json({ ok: true, skipped: true, reason: 'no Recall key' })
   }
 
   waitUntil(runReconcile())

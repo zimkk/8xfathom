@@ -69,10 +69,8 @@ export async function POST() {
     }
   }
 
-  const { GoogleCalendarClient, MockGoogleCalendarClient } = await import('@fathom/integrations/google')
-  const client = process.env['USE_MOCK_INTEGRATIONS'] === 'true'
-    ? new MockGoogleCalendarClient()
-    : new GoogleCalendarClient()
+  const { GoogleCalendarClient } = await import('@fathom/integrations/google')
+  const client = new GoogleCalendarClient()
 
   try {
     const events = await client.listUpcomingEvents(accessToken)

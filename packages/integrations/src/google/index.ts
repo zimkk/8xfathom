@@ -129,30 +129,3 @@ export class GoogleCalendarClient implements GoogleCalendarProvider {
 export function getGoogleCalendarClient(): GoogleCalendarClient {
   return new GoogleCalendarClient()
 }
-
-// Mock for local dev
-export class MockGoogleCalendarClient implements GoogleCalendarProvider {
-  async listUpcomingEvents(): Promise<GoogleCalendarEvent[]> {
-    const now = new Date()
-    return [
-      {
-        id: 'mock-event-1',
-        summary: 'Weekly Team Sync',
-        start: { dateTime: new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString() },
-        end: { dateTime: new Date(now.getTime() + 3 * 60 * 60 * 1000).toISOString() },
-        hangoutLink: 'https://meet.google.com/mock-abc-def',
-        attendees: [
-          { email: 'alice@example.com', displayName: 'Alice', responseStatus: 'accepted' },
-          { email: 'bob@example.com', displayName: 'Bob', responseStatus: 'accepted' },
-        ],
-      },
-    ]
-  }
-
-  async refreshAccessToken(): Promise<{ accessToken: string; expiresAt: Date }> {
-    return {
-      accessToken: 'mock-access-token',
-      expiresAt: new Date(Date.now() + 3600 * 1000),
-    }
-  }
-}

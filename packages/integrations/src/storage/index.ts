@@ -69,21 +69,6 @@ export class SupabaseStorageProvider implements StorageProvider {
   }
 }
 
-export class MockStorageProvider implements StorageProvider {
-  async uploadFile(path: string): Promise<string> {
-    return `https://mock-storage.example.com/${path}`
-  }
-
-  async getSignedUrl(path: string): Promise<string> {
-    return `https://mock-storage.example.com/${path}?token=mock-signed`
-  }
-
-  async deleteFile(): Promise<void> {}
-}
-
 export function getStorageProvider(): StorageProvider {
-  if (process.env['USE_MOCK_INTEGRATIONS'] === 'true') {
-    return new MockStorageProvider()
-  }
   return new SupabaseStorageProvider()
 }
