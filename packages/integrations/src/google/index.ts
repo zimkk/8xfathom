@@ -90,7 +90,7 @@ export class GoogleCalendarClient implements GoogleCalendarProvider {
 
   async exchangeCode(code: string): Promise<{
     accessToken: string
-    refreshToken: string
+    refreshToken: string | null
     expiresAt: Date
     scope: string
   }> {
@@ -120,7 +120,10 @@ export class GoogleCalendarClient implements GoogleCalendarProvider {
     }
     return {
       accessToken: data.access_token,
-      refreshToken: data.refresh_token,
+      // Google only issues a refresh_token on the first-ever consent for a
+      // given scope; a repeat grant (e.g. already consented via the unified
+      // login flow) can come back without one.
+      refreshToken: data.refresh_token ?? null,
       expiresAt: new Date(Date.now() + data.expires_in * 1000),
       scope: data.scope,
     }

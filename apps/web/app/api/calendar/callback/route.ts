@@ -41,10 +41,11 @@ export async function GET(request: Request) {
     const profile = await profileRes.json() as { email: string }
 
     const db = getDb()
-    const [encryptedAccess, encryptedRefresh] = await Promise.all([
-      encrypt(tokens.accessToken),
-      encrypt(tokens.refreshToken),
-    ])
+    const encryptedAccess = await encrypt(tokens.accessToken)
+    // Google only issues a refresh_token on the first-ever consent for this
+    // scope — a repeat grant can come back without one. Never overwrite a
+    // previously-saved refresh token with nothing.
+    const encryptedRefresh = tokens.refreshToken ? await encrypt(tokens.refreshToken) : null
 
     // Upsert calendar connection
     const existing = await db
@@ -60,7 +61,7 @@ export async function GET(request: Request) {
           status: 'connected',
           providerAccountEmail: profile.email,
           encryptedAccessToken: encryptedAccess,
-          encryptedRefreshToken: encryptedRefresh,
+          ...(encryptedRefresh ? { encryptedRefreshToken: encryptedRefresh } : {}),
           accessTokenExpiresAt: tokens.expiresAt,
           scopes: tokens.scope.split(' '),
           updatedAt: new Date(),
@@ -86,6 +87,9 @@ export async function GET(request: Request) {
     return successResponse
   } catch (err) {
     console.error('Calendar callback error:', err)
-    return NextResponse.redirect(`${appUrl}/app/settings/calendar?error=token_exchange_failed`)
+    const message = err instanceof Error ? err.message : 'unknown_error'
+    return NextResponse.redirect(
+      `${appUrl}/app/settings/calendar?error=token_exchange_failed&detail=${encodeURIComponent(message.slice(0, 200))}`
+    )
   }
 }
