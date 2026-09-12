@@ -1,11 +1,12 @@
 import type {
   CaptureProvider,
+  CaptureSessionRef,
+  CaptureProviderSession,
   ScheduleCaptureInput,
   StartCaptureInput,
-  CaptureSession,
-} from '@fathom/core/capture/provider'
-
-const RECALL_BASE_URL = 'https://us-east-1.recall.ai/api/v1'
+  StopCaptureInput,
+  CancelCaptureInput,
+} from '@fathom/core/capture'
 
 function getHeaders(): Record<string, string> {
   const key = process.env['RECALL_API_KEY']
@@ -16,12 +17,16 @@ function getHeaders(): Record<string, string> {
   }
 }
 
+function getBaseUrl(): string {
+  const region = process.env['RECALL_REGION'] ?? 'us-east-1'
+  return `https://${region}.recall.ai/api/v1`
+}
+
 export class RecallCaptureProvider implements CaptureProvider {
   readonly name = 'recall'
 
-  async schedule(input: ScheduleCaptureInput): Promise<CaptureSession> {
-    const region = process.env['RECALL_REGION'] ?? 'us-east-1'
-    const baseUrl = `https://${region}.recall.ai/api/v1`
+  async schedule(input: ScheduleCaptureInput): Promise<CaptureSessionRef> {
+    const baseUrl = getBaseUrl()
     const appUrl = process.env['APP_URL'] ?? 'http://localhost:3000'
 
     const res = await fetch(`${baseUrl}/bot`, {
@@ -29,13 +34,18 @@ export class RecallCaptureProvider implements CaptureProvider {
       headers: getHeaders(),
       body: JSON.stringify({
         meeting_url: input.meetingUrl,
-        bot_name: 'Fathom Notetaker',
-        join_at: input.scheduledStart.toISOString(),
+        bot_name: input.botDisplayName ?? 'Fathom Notetaker',
+        join_at: input.startAt.toISOString(),
         webhook_url: `${appUrl}/api/webhooks/recall`,
         recording_config: {
           transcript: { provider: { meeting_captions: {} } },
         },
-        metadata: { meetingId: input.meetingId },
+        // Real-time transcript segments delivered via webhook during the call
+        real_time_transcription: {
+          destination_url: `${appUrl}/api/webhooks/recall`,
+          partial_results: false,
+        },
+        metadata: { meetingId: input.meetingId, ...input.metadata },
       }),
     })
 
@@ -44,52 +54,74 @@ export class RecallCaptureProvider implements CaptureProvider {
       throw new Error(`Recall API error ${res.status}: ${err}`)
     }
 
-    const bot = await res.json() as { id: string; status_changes?: Array<{ code: string }> }
-    return { providerBotId: bot.id, status: 'scheduled' }
+    const bot = await res.json() as { id: string }
+    return { providerSessionId: bot.id, providerBotId: bot.id }
   }
 
-  async startNow(input: StartCaptureInput): Promise<CaptureSession> {
+  async startNow(input: StartCaptureInput): Promise<CaptureSessionRef> {
     return this.schedule({
-      meetingId: input.meetingId,
-      meetingUrl: input.meetingUrl,
-      scheduledStart: new Date(),
+      ...input,
+      startAt: new Date(),
     })
   }
 
-  async stop(providerBotId: string): Promise<void> {
-    const region = process.env['RECALL_REGION'] ?? 'us-east-1'
-    const baseUrl = `https://${region}.recall.ai/api/v1`
-    await fetch(`${baseUrl}/bot/${providerBotId}/leave_call`, {
+  async stop(input: StopCaptureInput): Promise<void> {
+    const baseUrl = getBaseUrl()
+    await fetch(`${baseUrl}/bot/${input.providerSessionId}/leave_call`, {
       method: 'POST',
       headers: getHeaders(),
     })
   }
 
-  async cancel(providerBotId: string): Promise<void> {
-    const region = process.env['RECALL_REGION'] ?? 'us-east-1'
-    const baseUrl = `https://${region}.recall.ai/api/v1`
-    await fetch(`${baseUrl}/bot/${providerBotId}`, {
+  async cancel(input: CancelCaptureInput): Promise<void> {
+    const baseUrl = getBaseUrl()
+    await fetch(`${baseUrl}/bot/${input.providerSessionId}`, {
       method: 'DELETE',
       headers: getHeaders(),
     })
   }
 
-  async getSession(providerBotId: string): Promise<CaptureSession | null> {
-    const region = process.env['RECALL_REGION'] ?? 'us-east-1'
-    const baseUrl = `https://${region}.recall.ai/api/v1`
-    const res = await fetch(`${baseUrl}/bot/${providerBotId}`, {
+  async getSession(providerSessionId: string): Promise<CaptureProviderSession> {
+    const baseUrl = getBaseUrl()
+    const res = await fetch(`${baseUrl}/bot/${providerSessionId}`, {
       headers: getHeaders(),
     })
-    if (!res.ok) return null
+    if (!res.ok) {
+      throw new Error(`Recall getSession error ${res.status}`)
+    }
 
     const bot = await res.json() as {
       id: string
       status_changes: Array<{ code: string; created_at: string }>
       video_url?: string
+      transcript_url?: string
     }
 
-    const latestStatus = bot.status_changes?.[bot.status_changes.length - 1]?.code ?? 'unknown'
-    return { providerBotId: bot.id, status: latestStatus, videoUrl: bot.video_url }
+    const statusMap: Record<string, CaptureProviderSession['status']> = {
+      joining_call: 'joining',
+      waiting_for_admission: 'waiting',
+      in_call_not_recording: 'joining',
+      in_call_recording: 'recording',
+      call_ended: 'done',
+      done: 'done',
+      analysis_in_progress: 'done',
+      analysis_done: 'done',
+      error: 'failed',
+      recording_permission_denied: 'denied',
+      timeout_waiting_for_meeting_start: 'failed',
+      timeout_waiting_for_admission: 'denied',
+    }
+
+    const rawStatus = bot.status_changes?.[bot.status_changes.length - 1]?.code ?? 'created'
+    const status = statusMap[rawStatus] ?? 'created'
+
+    return {
+      providerSessionId: bot.id,
+      providerBotId: bot.id,
+      status,
+      recordingUrl: bot.video_url,
+      transcriptAvailable: !!bot.transcript_url,
+    }
   }
 
   async getTranscript(providerBotId: string): Promise<Array<{
@@ -98,8 +130,7 @@ export class RecallCaptureProvider implements CaptureProvider {
     endMs: number
     text: string
   }>> {
-    const region = process.env['RECALL_REGION'] ?? 'us-east-1'
-    const baseUrl = `https://${region}.recall.ai/api/v1`
+    const baseUrl = getBaseUrl()
     const res = await fetch(`${baseUrl}/bot/${providerBotId}/transcript`, {
       headers: getHeaders(),
     })

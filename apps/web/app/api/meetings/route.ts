@@ -3,8 +3,22 @@ import { z } from 'zod'
 import { auth } from '@/lib/auth'
 import { getDb } from '@fathom/db'
 import { meetings } from '@fathom/db/schema'
+import { eq, desc } from 'drizzle-orm'
 import { captureOrchestration } from '@/lib/services/capture-orchestration-service'
 import { validateGoogleMeetUrl } from '@fathom/core'
+
+export async function GET(request: Request) {
+  const session = await auth()
+  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { searchParams } = new URL(request.url)
+  const limit = Math.min(parseInt(searchParams.get('limit') ?? '20'), 50)
+  const db = getDb()
+  const list = await db.select().from(meetings)
+    .where(eq(meetings.userId, session.user.id))
+    .orderBy(desc(meetings.startsAt))
+    .limit(limit)
+  return NextResponse.json({ meetings: list })
+}
 
 const CreateMeetingSchema = z.object({
   title: z.string().min(1).max(255),

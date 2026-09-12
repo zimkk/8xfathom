@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { auth } from '@/lib/auth'
 import { getMeetingById, getTranscriptSegments } from '@/lib/services/meeting-service'
+import { checkRateLimit, getClientIp } from '@/lib/rate-limit'
 
 const AskSchema = z.object({
   question: z.string().min(1).max(500),
@@ -13,6 +14,13 @@ export async function POST(
 ) {
   const session = await auth()
   const { meetingId } = await params
+
+  // Rate limiting: 30/min for authenticated users, 5/min for guests
+  const ip = getClientIp(request)
+  const limit = session?.user?.id ? 30 : 5
+  if (!checkRateLimit(ip, 'ask', limit, 60_000)) {
+    return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
+  }
 
   const meeting = await getMeetingById(meetingId, session?.user?.id ?? undefined)
   if (!meeting) return NextResponse.json({ error: 'Not found' }, { status: 404 })

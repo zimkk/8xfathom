@@ -1,9 +1,6 @@
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
-  experimental: {
-    typedRoutes: false,
-  },
   transpilePackages: ['@fathom/core', '@fathom/db', '@fathom/ui', '@fathom/integrations'],
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   webpack: (config: any) => {

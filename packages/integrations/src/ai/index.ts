@@ -1,4 +1,12 @@
-import type { MeetingIntelligenceProvider } from '@fathom/core/ai/provider'
+import type {
+  MeetingIntelligenceProvider,
+  MeetingExtractionInput,
+  MeetingExtraction,
+  SummaryGenerationInput,
+  TemplateSummary,
+  AskMeetingInput,
+  AskMeetingAnswer,
+} from '@fathom/core/ai'
 
 export class OpenAIMeetingIntelligenceProvider implements MeetingIntelligenceProvider {
   private model: string
@@ -35,42 +43,98 @@ export class OpenAIMeetingIntelligenceProvider implements MeetingIntelligencePro
     return data.choices[0]?.message.content ?? ''
   }
 
-  async extractMeeting(input: {
-    transcript: Array<{ speaker: string; startMs: number; endMs: number; text: string }>
-    templateKey?: string
-  }) {
-    const transcriptText = input.transcript
-      .map((s) => `[${Math.round(s.startMs / 1000)}s] ${s.speaker}: ${s.text}`)
-      .join('\n')
+  private buildTranscriptChunk(
+    segments: Array<{ id: string; speakerName: string; startMs: number; endMs: number; text: string }>
+  ): string {
+    return segments.map((s) => {
+      const totalSec = Math.round(s.startMs / 1000)
+      const min = Math.floor(totalSec / 60)
+      const sec = totalSec % 60
+      const timestamp = `${min}:${sec.toString().padStart(2, '0')}`
+      return `[seg:${s.id}][${timestamp}] ${s.speakerName}: ${s.text}`
+    }).join('\n')
+  }
 
-    const prompt = `Analyze this meeting transcript and extract structured information.
+  async extractMeeting(input: MeetingExtractionInput): Promise<MeetingExtraction> {
+    const CHUNK_SIZE = 50
+    const { segments } = input
+    const validSegmentIds = new Set(segments.map((s) => s.id))
+
+    // Chunk long transcripts and merge results
+    const chunks: typeof segments[] = []
+    if (segments.length <= CHUNK_SIZE) {
+      chunks.push(segments)
+    } else {
+      for (let i = 0; i < segments.length; i += CHUNK_SIZE) {
+        chunks.push(segments.slice(i, i + CHUNK_SIZE))
+      }
+    }
+
+    const allResults: MeetingExtraction[] = []
+    for (const chunk of chunks) {
+      const transcriptText = this.buildTranscriptChunk(chunk)
+      const prompt = `Analyze this meeting transcript and extract structured information.
+Each segment is labeled [seg:ID] — include these IDs in evidenceSegmentIds arrays (min 1 per item).
+
+Meeting title: ${input.title}
 
 Transcript:
 ${transcriptText}
 
-Return a JSON object with:
-- title: string (concise meeting title)
-- summary: string (2-3 sentence overview)
-- keyPoints: string[] (up to 8 key points)
-- decisions: Array<{text: string, status: "confirmed"|"tentative"}>
-- actionItems: Array<{text: string, ownerName: string|null, dueDateText: string|null}>
-- topics: Array<{title: string, startMs: number, endMs: number}>
-- highlights: Array<{text: string, startMs: number, endMs: number, speakerName: string}>
+Return a JSON object with exactly this shape:
+{
+  "overview": "string",
+  "keyPoints": [{"text": "string", "evidenceSegmentIds": ["seg-id"]}],
+  "topics": [{"title": "string", "summary": "string", "evidenceSegmentIds": ["seg-id"]}],
+  "decisions": [{"text": "string", "status": "confirmed"|"tentative", "evidenceSegmentIds": ["seg-id"]}],
+  "actionItems": [{"text": "string", "ownerName": "string|null", "dueDate": "string|null", "evidenceSegmentIds": ["seg-id"]}],
+  "openQuestions": [{"text": "string", "evidenceSegmentIds": ["seg-id"]}],
+  "followUps": [{"text": "string", "evidenceSegmentIds": ["seg-id"]}]
+}
 
 Return only valid JSON.`
 
-    const response = await this.chat([{ role: 'user', content: prompt }])
-    try {
-      return JSON.parse(response)
-    } catch {
-      throw new Error('Failed to parse AI extraction response')
+      const response = await this.chat([{ role: 'user', content: prompt }])
+      try {
+        allResults.push(JSON.parse(response) as MeetingExtraction)
+      } catch {
+        // Skip malformed chunks rather than failing entirely
+      }
+    }
+
+    if (allResults.length === 0) throw new Error('Failed to parse any AI extraction response')
+
+    // Merge chunk results
+    const first = allResults[0]!
+    const merged: MeetingExtraction = {
+      overview: first.overview ?? '',
+      keyPoints: allResults.flatMap((r) => r.keyPoints ?? []),
+      topics: allResults.flatMap((r) => r.topics ?? []),
+      decisions: allResults.flatMap((r) => r.decisions ?? []),
+      actionItems: allResults.flatMap((r) => r.actionItems ?? []),
+      openQuestions: allResults.flatMap((r) => r.openQuestions ?? []),
+      followUps: allResults.flatMap((r) => r.followUps ?? []),
+    }
+
+    // Drop invalid evidence segment IDs
+    const dropInvalidIds = <T extends { evidenceSegmentIds: string[] }>(items: T[]): T[] =>
+      items.map((item) => ({
+        ...item,
+        evidenceSegmentIds: item.evidenceSegmentIds.filter((id) => validSegmentIds.has(id)),
+      }))
+
+    return {
+      ...merged,
+      keyPoints: dropInvalidIds(merged.keyPoints),
+      topics: dropInvalidIds(merged.topics),
+      decisions: dropInvalidIds(merged.decisions),
+      actionItems: dropInvalidIds(merged.actionItems),
+      openQuestions: dropInvalidIds(merged.openQuestions),
+      followUps: dropInvalidIds(merged.followUps),
     }
   }
 
-  async generateSummary(input: {
-    transcript: Array<{ speaker: string; startMs: number; endMs: number; text: string }>
-    templateKey: string
-  }): Promise<string> {
+  async generateSummary(input: SummaryGenerationInput): Promise<TemplateSummary> {
     const templateInstructions: Record<string, string> = {
       general: 'Provide a balanced summary covering main discussion points, decisions, and action items.',
       sales: 'Focus on customer needs, objections, next steps, and deal progression.',
@@ -80,40 +144,55 @@ Return only valid JSON.`
     }
 
     const instruction = templateInstructions[input.templateKey] ?? templateInstructions['general']!
-    const transcriptText = input.transcript
-      .map((s) => `${s.speaker}: ${s.text}`)
+    const transcriptText = input.segments
+      .map((s) => `${s.speakerName}: ${s.text}`)
       .join('\n')
 
     const response = await this.chat([{
       role: 'user',
-      content: `${instruction}\n\nTranscript:\n${transcriptText}\n\nProvide the summary:`,
+      content: `${instruction}\n\nMeeting: ${input.title}\n\nTranscript:\n${transcriptText}\n\nReturn JSON: {"overview": "string", "sections": [{"title": "string", "content": "string"}]}`,
     }])
 
-    return response
+    try {
+      const parsed = JSON.parse(response) as { overview?: string; sections?: Array<{ title: string; content: string }> }
+      return {
+        templateKey: input.templateKey,
+        overview: parsed.overview ?? response,
+        sections: parsed.sections ?? [{ title: 'Summary', content: response }],
+        modelProvider: 'openai',
+        modelName: this.model,
+        promptVersion: 'v1',
+      }
+    } catch {
+      return {
+        templateKey: input.templateKey,
+        overview: response,
+        sections: [{ title: 'Summary', content: response }],
+        modelProvider: 'openai',
+        modelName: this.model,
+        promptVersion: 'v1',
+      }
+    }
   }
 
-  async answerQuestion(input: {
-    meetingId: string
-    question: string
-    relevantSegments: Array<{ id: string; speakerName: string | null; startMs: number; endMs: number; text: string }>
-  }) {
+  async answerQuestion(input: AskMeetingInput): Promise<AskMeetingAnswer> {
     const context = input.relevantSegments
-      .map((s) => `[${Math.round(s.startMs / 1000)}s] ${s.speakerName ?? 'Unknown'}: ${s.text}`)
+      .map((s) => `[seg:${s.id}][${Math.round(s.startMs / 1000)}s] ${s.speakerName}: ${s.text}`)
       .join('\n')
 
     const response = await this.chat([
       {
         role: 'system',
-        content: 'You are a meeting assistant. Answer questions based on the transcript. Be concise and cite specific moments.',
+        content: 'You are a meeting assistant. Answer questions based on the transcript. Be concise and cite specific moments with their segment IDs.',
       },
       {
         role: 'user',
-        content: `Question: ${input.question}\n\nTranscript context:\n${context}\n\nAnswer with citations in this JSON format: { "answer": string, "citations": [{ "segmentId": string, "speakerName": string, "startMs": number, "quote": string }] }`,
+        content: `Question: ${input.question}\n\nTranscript context:\n${context}\n\nAnswer with citations in this JSON format: { "answer": "string", "citations": [{ "segmentId": "string", "startMs": number, "speakerName": "string", "quotePreview": "string" }] }`,
       },
     ])
 
     try {
-      return JSON.parse(response)
+      return JSON.parse(response) as AskMeetingAnswer
     } catch {
       return { answer: response, citations: [] }
     }

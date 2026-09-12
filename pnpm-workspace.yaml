@@ -7,3 +7,4 @@ allowBuilds:
   protobufjs: true
   unrs-resolver: true
   sharp: true
+  '@sentry/cli': true

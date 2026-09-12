@@ -48,5 +48,14 @@ export async function GET() {
   const client = new GoogleCalendarClient()
   const authUrl = client.getAuthUrl(state)
 
-  return NextResponse.redirect(authUrl)
+  const response = NextResponse.redirect(authUrl)
+  // Store state for CSRF verification in the callback
+  response.cookies.set('oauth_state', state, {
+    httpOnly: true,
+    sameSite: 'lax',
+    maxAge: 300, // 5 minutes
+    path: '/',
+    secure: process.env['NODE_ENV'] === 'production',
+  })
+  return response
 }

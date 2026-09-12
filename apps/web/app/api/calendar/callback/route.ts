@@ -4,6 +4,7 @@ import { getDb } from '@fathom/db'
 import { calendarConnections } from '@fathom/db/schema'
 import { encrypt } from '@/lib/crypto/encryption'
 import { eq } from 'drizzle-orm'
+import { cookies } from 'next/headers'
 
 export async function GET(request: Request) {
   const session = await auth()
@@ -15,10 +16,18 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url)
   const code = searchParams.get('code')
+  const state = searchParams.get('state')
   const error = searchParams.get('error')
 
   if (error || !code) {
     return NextResponse.redirect(`${appUrl}/app/settings/calendar?error=access_denied`)
+  }
+
+  // Verify CSRF state
+  const cookieStore = await cookies()
+  const expectedState = cookieStore.get('oauth_state')?.value
+  if (!expectedState || state !== expectedState) {
+    return NextResponse.redirect(`${appUrl}/app/settings/calendar?error=invalid_state`)
   }
 
   try {
@@ -72,7 +81,9 @@ export async function GET(request: Request) {
         })
     }
 
-    return NextResponse.redirect(`${appUrl}/app/settings/calendar?connected=true`)
+    const successResponse = NextResponse.redirect(`${appUrl}/app/settings/calendar?connected=true`)
+    successResponse.cookies.delete('oauth_state')
+    return successResponse
   } catch (err) {
     console.error('Calendar callback error:', err)
     return NextResponse.redirect(`${appUrl}/app/settings/calendar?error=token_exchange_failed`)

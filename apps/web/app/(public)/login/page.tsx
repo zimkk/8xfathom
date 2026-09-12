@@ -1,8 +1,15 @@
 import Link from 'next/link'
 import { Mic } from 'lucide-react'
 import { SignInButton } from '@/components/auth/sign-in-button'
+import { DevSignIn } from '@/components/auth/dev-sign-in'
 
 export const metadata = { title: 'Sign in' }
+
+const hasGoogleOAuth =
+  !!process.env['GOOGLE_CLIENT_ID'] && !!process.env['GOOGLE_CLIENT_SECRET']
+
+const isDevBypass =
+  process.env['NODE_ENV'] === 'development' && process.env['DEV_AUTH_BYPASS'] === 'true'
 
 export default function LoginPage() {
   return (
@@ -23,7 +30,32 @@ export default function LoginPage() {
             AI meeting notes for Google Meet
           </p>
 
-          <SignInButton />
+          <div className="space-y-3">
+            {hasGoogleOAuth && <SignInButton />}
+
+            {isDevBypass && (
+              <>
+                {hasGoogleOAuth && (
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    <div className="flex-1 h-px bg-border" />
+                    dev
+                    <div className="flex-1 h-px bg-border" />
+                  </div>
+                )}
+                <DevSignIn />
+              </>
+            )}
+
+            {!hasGoogleOAuth && !isDevBypass && (
+              <p className="text-sm text-muted-foreground py-4">
+                Authentication is not configured. Set{' '}
+                <code className="text-xs bg-muted px-1 py-0.5 rounded">GOOGLE_CLIENT_ID</code>{' '}
+                and{' '}
+                <code className="text-xs bg-muted px-1 py-0.5 rounded">GOOGLE_CLIENT_SECRET</code>
+                {' '}in your environment variables.
+              </p>
+            )}
+          </div>
 
           <p className="mt-6 text-xs text-muted-foreground">
             By signing in, you agree to our{' '}

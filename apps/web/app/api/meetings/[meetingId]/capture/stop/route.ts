@@ -14,9 +14,8 @@ export async function POST(
 
   const { meetingId } = await params
   const meeting = await getMeetingById(meetingId, session.user.id)
-  if (!meeting) {
-    return NextResponse.json({ error: 'Meeting not found' }, { status: 404 })
-  }
+  if (!meeting) return NextResponse.json({ error: 'Meeting not found' }, { status: 404 })
+  if (meeting.userId !== session.user.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const result = await captureOrchestration.stopCapture(meetingId)
   return NextResponse.json(result)

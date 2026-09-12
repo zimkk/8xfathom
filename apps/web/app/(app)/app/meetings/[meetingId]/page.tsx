@@ -47,9 +47,13 @@ export default async function MeetingPage({ params, searchParams }: PageProps) {
   // Get signed media URL if recording exists
   let signedMediaUrl: string | undefined
   if (meeting.recordingStoragePath) {
-    // In production: generate signed URL from Supabase
-    // For now, pass through
-    signedMediaUrl = undefined
+    try {
+      const { getStorageProvider } = await import('@fathom/integrations')
+      const storage = getStorageProvider()
+      signedMediaUrl = await storage.getSignedUrl(meeting.recordingStoragePath, 3600)
+    } catch {
+      // storage not configured — video will show placeholder
+    }
   }
 
   return (

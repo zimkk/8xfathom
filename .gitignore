@@ -50,3 +50,7 @@ test-results/
 
 # pnpm
 pnpm-lock.yaml.bak
+
+# Markdown files (except README)
+*.md
+!README.md

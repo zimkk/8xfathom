@@ -1,292 +1,210 @@
-# Fathom 8x — AI Meeting Notetaker
+# Fathom 8x
 
-A polished, end-to-end Google Meet AI notetaker built as a Fathom-style product. Connects to Google Calendar, automatically schedules a visible AI notetaker for eligible meetings, records and transcribes, and distills every meeting into a navigable knowledge workspace.
-
-**Live demo:** _deploy to Vercel — see Deployment below_
+AI-powered Google Meet notetaker. Automatic recording, real-time transcription, smart summaries, action items, and searchable meeting history.
 
 ---
 
-## Product Overview
+## What it does
 
-```
-Google Calendar
-      ↓
-meeting is known automatically
-      ↓
-user joins Google Meet normally
-      ↓
-real visible AI notetaker joins (via Recall.ai)
-      ↓
-recording + speaker-aware transcript
-      ↓
-automatic AI processing
-      ↓
-recording playback synchronized with transcript
-      ↓
-summary templates + action items + highlights
-      ↓
-cross-meeting search + public sharing
-```
-
-### Key Features
-
-- **Calendar awareness** — connect Google Calendar, upcoming Meet events appear automatically
-- **Auto-record rules** — all, external only, internal only, or never; per-meeting overrides
-- **Real visible bot** — Recall.ai-backed notetaker joins as a visible participant, waits for admission
-- **Recording playback** — synchronized with speaker-aware transcript; click any segment to seek
-- **AI summaries** — 5 templates (General, Sales, 1:1, Interview, Project); switch on demand
-- **Action items & decisions** — extracted with evidence timestamps, user-checkable
-- **Highlights & clips** — create by selecting transcript segments; public clip sharing
-- **Cross-meeting search** — PostgreSQL full-text across title, participants, transcript, summary
-- **Public sharing** — share any meeting or clip without requiring sign-in
-- **Demo workspace** — full seeded demo accessible without authentication
+- **Joins your Google Meet automatically** via a bot that records and transcribes the call
+- **Generates structured summaries** — overview, decisions, action items, key topics — using GPT-4o
+- **Searchable transcript** with speaker attribution and timestamp deep-links
+- **Highlight clips** — save moments from any meeting and share them
+- **Share links** — share a full meeting or a single clip with anyone, no account required
+- **Ask anything** — Q&A against the meeting transcript
+- **Chrome extension** (in progress) — live transcription during the call via Web Speech API
 
 ---
 
-## Architecture
+## Tech stack
 
-```
-Browser (Next.js)
-      │
-      ▼
-Next.js App Router (Vercel)
-├── Auth (Auth.js + Google OAuth)
-├── Calendar API (connect, sync, events)
-├── Meetings API (lifecycle, capture, transcript, AI)
-├── Search API (PostgreSQL FTS)
-├── Share API (token-based public access)
-└── Webhook endpoint (Recall.ai events)
-      │
-      ├── PostgreSQL (Supabase) + pgvector
-      ├── Supabase Storage (recordings, media)
-      ├── Trigger.dev (background jobs)
-      │     ├── calendar.sync
-      │     ├── recording.ingest
-      │     ├── transcript.ingest
-      │     ├── meeting.process (AI extraction)
-      │     └── embeddings.generate
-      ├── Google APIs (Calendar)
-      ├── Recall.ai (meeting bot infrastructure)
-      └── AI Provider (OpenAI via Vercel AI SDK)
-```
-
-**Capture layer:** Recall.ai handles all meeting-bot browser infrastructure — joining Google Meet, media capture, transcription, and participant metadata. The application wraps Recall behind a `CaptureProvider` interface so the provider can be swapped without changing domain logic.
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Framework | Next.js 14 App Router |
+| Layer | Choice |
+|-------|--------|
+| Framework | Next.js 15 App Router |
 | Language | TypeScript (strict) |
-| Styling | Tailwind CSS + shadcn/ui |
-| Database ORM | Drizzle ORM |
-| Database | Supabase Postgres + pgvector |
-| Object Storage | Supabase Storage |
+| Database | PostgreSQL + Drizzle ORM |
 | Auth | Auth.js v5 (Google OAuth) |
-| Background Jobs | Trigger.dev |
-| Meeting Capture | Recall.ai |
-| AI | OpenAI (via Vercel AI SDK) |
+| Storage | Supabase Storage |
+| Meeting capture | Recall.ai |
+| AI | OpenAI GPT-4o |
+| Background jobs | Vercel Cron + `waitUntil` |
 | Monorepo | pnpm workspaces + Turborepo |
-| Deployment | Vercel |
 
 ---
 
-## Monorepo Structure
+## Project structure
 
 ```
-/
+fathom8x/
 ├── apps/
-│   └── web/              Next.js application
+│   └── web/                  # Next.js application
+│       ├── app/              # App Router pages and API routes
+│       ├── components/       # React components + shadcn/ui
+│       └── lib/              # Services, auth, utilities
 ├── packages/
-│   ├── core/             Domain types, capture + AI interfaces
-│   ├── db/               Drizzle schema + migrations
-│   ├── integrations/     Recall.ai, Google, OpenAI, Supabase adapters
-│   ├── jobs/             Trigger.dev background tasks
-│   ├── ui/               Shared UI components
-│   └── config/           Shared eslint, typescript, tailwind config
-└── scripts/
-    ├── seed-demo.ts      Demo data seeder
-    └── seed-data.ts      Hero meeting transcript + 10 seed meetings
+│   ├── core/                 # Domain logic, types, capture decisions
+│   ├── db/                   # Drizzle schema and migrations
+│   ├── integrations/         # Recall.ai, OpenAI, Google Calendar, Storage
+│   ├── jobs/                 # Background job definitions (Trigger.dev compatible)
+│   └── ui/                   # Shared UI primitives
+├── scripts/                  # Setup and seed scripts
+├── docker-compose.yml        # Local Postgres
+└── vercel.json               # Cron schedules
 ```
 
 ---
 
-## Setup
+## Local development
 
 ### Prerequisites
 
 - Node.js 20+
 - pnpm 9+
-- Supabase project (Postgres + Storage)
-- Google Cloud project with Calendar API and OAuth 2.0
-- Recall.ai account
-- OpenAI API key
-- Trigger.dev project
+- Docker (for local Postgres)
 
-### 1. Clone and install
+### One-command setup
 
 ```bash
-git clone <repo>
-cd fathom
-pnpm install
+pnpm setup
 ```
 
-### 2. Environment variables
+This starts Docker Postgres, enables pgvector, runs migrations, and seeds demo data.
 
-```bash
-cp .env.example .env.local
-# Fill in all required values
-```
-
-See `.env.example` for all required variables.
-
-### 3. Database
-
-```bash
-pnpm --filter @fathom/db db:generate
-pnpm --filter @fathom/db db:migrate
-```
-
-Enable `pgvector` extension in Supabase SQL editor:
-```sql
-create extension if not exists vector;
-```
-
-### 4. Seed demo data
-
-```bash
-pnpm seed:demo
-```
-
-This creates 10 seeded meetings including the hero enterprise implementation meeting with 195 transcript segments, AI summaries, action items, decisions, topics, and highlights.
-
-### 5. Development
+Then start the dev server:
 
 ```bash
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000](http://localhost:3000). The app runs fully in mock mode — no external API keys needed.
 
-With `USE_MOCK_INTEGRATIONS=true` in `.env.local`, the app runs fully without real Recall.ai or AI API keys — using mock providers that simulate bot lifecycle in seconds.
+### Environment variables
 
----
-
-## Environment Variables
+Copy `.env.example` to `.env.local`:
 
 ```bash
-# App
-APP_URL=http://localhost:3000
-AUTH_SECRET=<random 32 bytes>
-APP_ENCRYPTION_KEY=<random 32 bytes base64>
-USE_MOCK_INTEGRATIONS=false
-
-# Database (Supabase)
-DATABASE_URL=postgresql://...
-DIRECT_DATABASE_URL=postgresql://...
-NEXT_PUBLIC_SUPABASE_URL=https://...supabase.co
-SUPABASE_SERVICE_ROLE_KEY=...
-SUPABASE_STORAGE_BUCKET=meeting-media
-
-# Google OAuth + Calendar
-GOOGLE_CLIENT_ID=...
-GOOGLE_CLIENT_SECRET=...
-GOOGLE_REDIRECT_URI=http://localhost:3000/api/calendar/callback
-
-# Recall.ai
-RECALL_API_KEY=...
-RECALL_WEBHOOK_SECRET=...
-RECALL_REGION=us-east-1
-
-# AI
-AI_PROVIDER=openai
-AI_API_KEY=...
-AI_CHAT_MODEL=gpt-4o
-AI_EMBEDDING_MODEL=text-embedding-3-small
-
-# Trigger.dev
-TRIGGER_SECRET_KEY=...
-TRIGGER_PROJECT_REF=...
-
-# Sentry (optional)
-NEXT_PUBLIC_SENTRY_DSN=...
+cp .env.example .env.local
 ```
 
----
+The defaults work for local development. For real meeting capture and AI, fill in:
 
-## How Meeting Capture Works
+| Variable | Where to get it |
+|----------|----------------|
+| `RECALL_API_KEY` | [recall.ai](https://recall.ai) dashboard |
+| `RECALL_WEBHOOK_SECRET` | Recall dashboard → Webhooks |
+| `GOOGLE_CLIENT_ID` | Google Cloud Console → OAuth 2.0 |
+| `GOOGLE_CLIENT_SECRET` | Google Cloud Console → OAuth 2.0 |
+| `AI_API_KEY` | [platform.openai.com](https://platform.openai.com) |
+| `DATABASE_URL` | Your Postgres connection string |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project settings |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase project settings |
+| `CRON_SECRET` | Generate: `openssl rand -hex 32` |
+| `AUTH_SECRET` | Generate: `openssl rand -hex 32` |
+| `APP_ENCRYPTION_KEY` | Generate: `openssl rand -hex 32` |
 
-1. **Calendar sync** — the Trigger.dev `calendar.sync` job polls the user's Google Calendar every 10 minutes for upcoming Meet events.
+### Mock mode
 
-2. **Capture policy** — a pure function `evaluateCaptureDecision()` evaluates the user's default recording rule and per-meeting overrides to decide whether to schedule the bot.
-
-3. **Bot scheduling** — `CaptureOrchestrationService` calls `RecallCaptureProvider.schedule()`, which creates a Recall.ai bot targeting the meeting URL. The bot joins ~1 minute before the meeting.
-
-4. **Admission** — Recall's bot appears as a visible participant ("AI Notetaker"). If the host requires admission, it waits and the meeting shows `Waiting for host approval`. Once admitted, recording begins.
-
-5. **Webhook lifecycle** — Recall.ai sends webhook events to `/api/webhooks/recall` (HMAC-SHA256 verified). Events are normalized to internal types and drive `MeetingLifecycleService.transition()`.
-
-6. **Ingestion** — when recording is ready, `recording.ingest` streams it to Supabase Storage. `transcript.ingest` normalizes segments to `transcript_segments`.
-
-7. **AI processing** — `meeting.process` chunks the transcript, runs structured extraction via OpenAI, validates evidence segment IDs, and persists summaries, action items, decisions, and topics.
-
-8. **Playback** — signed Supabase Storage URLs enable direct browser playback without proxying through Vercel.
-
-**Note:** This application uses Recall.ai for meeting-bot infrastructure. Recall provides the Chromium-based bot that visibly joins Google Meet. This is an intentional architectural choice — building a self-hosted bot would add weeks of complexity without improving the core product experience.
+Set `USE_MOCK_INTEGRATIONS=true` and `DEV_AUTH_BYPASS=true` to run without any external services. A demo sign-in panel appears on the login page.
 
 ---
 
-## Deployment
+## Key API routes
 
-### Vercel
+| Method | Route | Description |
+|--------|-------|-------------|
+| `GET` | `/api/meetings` | List meetings (paginated) |
+| `POST` | `/api/meetings` | Create meeting manually |
+| `GET` | `/api/meetings/:id` | Get single meeting |
+| `POST` | `/api/meetings/:id/capture` | Start/schedule bot capture |
+| `POST` | `/api/meetings/:id/capture/stop` | Stop active capture |
+| `GET` | `/api/meetings/:id/summary` | Get AI summary |
+| `POST` | `/api/meetings/:id/summary/generate` | Re-generate summary |
+| `GET` | `/api/meetings/:id/transcript` | Get transcript segments |
+| `GET` | `/api/meetings/:id/action-items` | List action items |
+| `POST` | `/api/meetings/:id/action-items` | Create manual action item |
+| `PATCH` | `/api/meetings/:id/action-items/:itemId` | Toggle action item status |
+| `GET` | `/api/meetings/:id/highlights` | List highlights |
+| `POST` | `/api/meetings/:id/highlights` | Create highlight |
+| `POST` | `/api/meetings/:id/ask` | Ask a question about the meeting |
+| `GET` | `/api/meetings/:id/share` | List share links |
+| `POST` | `/api/meetings/:id/share` | Create share link |
+| `POST` | `/api/calendar/connect` | Start Google Calendar OAuth |
+| `POST` | `/api/calendar/sync` | Sync upcoming calendar events |
+| `GET` | `/api/search` | Full-text search across meetings |
+| `POST` | `/api/webhooks/recall` | Recall.ai webhook receiver |
+| `GET` | `/api/cron/schedule-captures` | Vercel Cron — schedule upcoming bots |
+| `GET` | `/api/cron/reconcile-captures` | Vercel Cron — fix stuck captures |
+
+---
+
+## Deployment (Vercel)
+
+1. Import the repo in [vercel.com](https://vercel.com)
+2. Add all environment variables from `.env.example`
+3. Set `CRON_SECRET` — Vercel sends this automatically to cron routes
+4. Deploy — cron jobs activate automatically from `vercel.json`
+
+> **Note:** Vercel Hobby plan caps function execution at 60s. This covers transcription and AI summary for meetings up to ~45 minutes. For longer meetings, upgrade to Pro and set `maxDuration = 300` in the webhook route.
+
+---
+
+## Running tests
 
 ```bash
-vercel deploy
-```
+# Unit tests
+pnpm test
 
-Set all environment variables in the Vercel dashboard. The app deploys from `apps/web`.
+# Type checking
+pnpm typecheck
 
-### Recall.ai Webhook
-
-After deployment, configure your Recall.ai webhook URL:
-```
-https://<your-domain>/api/webhooks/recall
-```
-
-### Google OAuth
-
-Add authorized redirect URIs in Google Cloud Console:
-```
-https://<your-domain>/api/auth/callback/google
-https://<your-domain>/api/calendar/callback
+# Lint
+pnpm lint
 ```
 
 ---
 
-## Test Commands
+## Database
 
 ```bash
-pnpm typecheck    # TypeScript check (all packages)
-pnpm lint         # ESLint
-pnpm test         # Vitest unit tests
-pnpm build        # Production build
+# Generate migrations after schema changes
+pnpm db:generate
+
+# Apply migrations
+pnpm db:migrate
+
+# Open Drizzle Studio (DB browser)
+pnpm db:studio
+
+# Seed demo data
+pnpm seed:demo
 ```
 
 ---
 
-## Tradeoffs & Known Limitations
+## How meeting capture works
 
-- **Google Meet only** — intentional scope constraint for assessment depth over breadth
-- **Recall.ai dependency** — third-party bot admission depends on Google Meet host settings; some organizations block third-party bots at the domain level
-- **AI quality** — summary and action item quality depends on transcript quality from Recall
-- **No real-time transcript in demo** — the demo uses seeded data; live meetings use polling for status
-- **Consent requirements** — recording laws vary by jurisdiction; the meeting host is responsible for compliance
-- **Chrome extension** — a lightweight P1 Meet companion extension (Add Notetaker, Highlight, Open Notes, Stop) is architecturally designed but not included in this build
+```
+Google Calendar event (Meet URL detected)
+         ↓
+Fathom schedules a Recall.ai bot (POST /v1/bot)
+         ↓
+Recall's bot joins the Google Meet call
+         ↓
+Recall webhooks → POST /api/webhooks/recall
+  • bot.status_change  → updates meeting status in DB
+  • bot.transcript.data → stores live transcript segments
+         ↓
+When meeting ends, Recall finishes processing (analysis_done)
+         ↓
+waitUntil() kicks off in background:
+  1. Fetches full transcript from Recall
+  2. Inserts transcript segments
+  3. Calls OpenAI to extract summary, action items, decisions, topics
+  4. Marks meeting as ready
+```
 
 ---
 
-## Agent Logs
+## License
 
-This project was built using Claude Code with multi-agent parallelism. See `.agent-logs/` for the agent capture setup and incremental development logs committed throughout the build.
+MIT

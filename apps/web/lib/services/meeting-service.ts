@@ -64,12 +64,10 @@ export async function getDemoMeetings(limit = 20) {
 
 export async function getMeetingById(meetingId: string, userId?: string) {
   const db = getDb()
+  // Unauthenticated callers can only see demo meetings — never private ones
   const conditions = userId
-    ? and(
-        eq(meetings.id, meetingId),
-        or(eq(meetings.userId, userId), eq(meetings.visibility, 'demo'))
-      )
-    : eq(meetings.id, meetingId)
+    ? and(eq(meetings.id, meetingId), or(eq(meetings.userId, userId), eq(meetings.visibility, 'demo')))
+    : and(eq(meetings.id, meetingId), eq(meetings.visibility, 'demo'))
 
   const [meeting] = await db.select().from(meetings).where(conditions).limit(1)
   return meeting ?? null
@@ -81,7 +79,7 @@ export async function getMeetingParticipants(meetingId: string) {
     .select()
     .from(meetingParticipants)
     .where(eq(meetingParticipants.meetingId, meetingId))
-    .orderBy(meetingParticipants.isHost)
+    .orderBy(desc(meetingParticipants.isHost)) // hosts first
 }
 
 export async function getTranscriptSegments(meetingId: string) {

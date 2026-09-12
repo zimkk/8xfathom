@@ -26,7 +26,7 @@ export class SupabaseStorageProvider implements StorageProvider {
         Authorization: `Bearer ${this.serviceKey}`,
         'Content-Type': contentType,
       },
-      body: buffer,
+      body: buffer as unknown as BodyInit,
     })
 
     if (!res.ok) {

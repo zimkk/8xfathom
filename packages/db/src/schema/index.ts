@@ -1,4 +1,5 @@
 export * from './users.js'
+// users.ts also exports: accounts, sessions, verificationTokens (Auth.js tables)
 export * from './calendar-connections.js'
 export * from './user-capture-preferences.js'
 export * from './calendar-events.js'

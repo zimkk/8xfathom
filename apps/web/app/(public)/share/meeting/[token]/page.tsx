@@ -67,6 +67,17 @@ export default async function ShareMeetingPage({ params }: Props) {
     .set({ updatedAt: new Date() })
     .where(eq(shareLinks.id, link.id))
 
+  let signedMediaUrl: string | undefined
+  if (meeting.recordingStoragePath) {
+    try {
+      const { getStorageProvider } = await import('@fathom/integrations')
+      const storage = getStorageProvider()
+      signedMediaUrl = await storage.getSignedUrl(meeting.recordingStoragePath, 3600)
+    } catch {
+      // storage not configured — video will show placeholder
+    }
+  }
+
   return (
     <div className="flex flex-col min-h-screen">
       <div className="border-b bg-muted/40 px-4 py-2 flex items-center gap-2">
@@ -83,6 +94,7 @@ export default async function ShareMeetingPage({ params }: Props) {
           decisions={link.allowSummary ? decisions : []}
           topics={link.allowSummary ? topics : []}
           highlights={highlights}
+          signedMediaUrl={signedMediaUrl}
           isReadOnly={true}
           backHref="/demo"
         />

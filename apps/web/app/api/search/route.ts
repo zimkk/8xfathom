@@ -3,9 +3,17 @@ import { auth } from '@/lib/auth'
 import { getDb } from '@fathom/db'
 import { meetings, transcriptSegments, meetingParticipants } from '@fathom/db/schema'
 import { eq, and, or, ilike, desc } from 'drizzle-orm'
+import { checkRateLimit, getClientIp } from '@/lib/rate-limit'
 
 export async function GET(request: Request) {
   const session = await auth()
+
+  // Rate limit: 50 req/min per IP
+  const ip = getClientIp(request)
+  if (!checkRateLimit(ip, 'search', 50, 60_000)) {
+    return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
+  }
+
   const { searchParams } = new URL(request.url)
   const q = searchParams.get('q')?.trim()
   const limit = Math.min(parseInt(searchParams.get('limit') ?? '20'), 50)

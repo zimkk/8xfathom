@@ -37,6 +37,17 @@ export default async function DemoMeetingPage({ params, searchParams }: PageProp
       getMeetingHighlights(id),
     ])
 
+  let signedMediaUrl: string | undefined
+  if (meeting.recordingStoragePath) {
+    try {
+      const { getStorageProvider } = await import('@fathom/integrations')
+      const storage = getStorageProvider()
+      signedMediaUrl = await storage.getSignedUrl(meeting.recordingStoragePath, 3600)
+    } catch {
+      // storage not configured — video will show placeholder
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Demo banner */}
@@ -60,6 +71,7 @@ export default async function DemoMeetingPage({ params, searchParams }: PageProp
         topics={topicsList}
         highlights={highlightsList}
         initialTimeSeconds={t ? parseFloat(t) : undefined}
+        signedMediaUrl={signedMediaUrl}
         isDemo={true}
         backHref="/demo"
       />

@@ -9,6 +9,7 @@
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
     "test": "turbo test",
+    "db:generate": "pnpm --filter @fathom/db generate",
     "db:migrate": "pnpm --filter @fathom/db migrate",
     "db:push": "pnpm --filter @fathom/db push",
     "db:studio": "pnpm --filter @fathom/db studio",
@@ -33,7 +34,8 @@
       "@next/swc-linux-x64-gnu",
       "protobufjs",
       "unrs-resolver",
-      "sharp"
+      "sharp",
+      "@sentry/cli"
     ]
   }
 }

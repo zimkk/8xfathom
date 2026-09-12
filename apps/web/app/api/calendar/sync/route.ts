@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { getDb } from '@fathom/db'
 import { calendarConnections, meetings } from '@fathom/db/schema'
-import { eq, and } from 'drizzle-orm'
+import { eq, and, gte, lt } from 'drizzle-orm'
 import { decrypt, encrypt } from '@/lib/crypto/encryption'
 import { validateGoogleMeetUrl } from '@fathom/core'
 
@@ -37,10 +37,17 @@ export async function POST() {
 
   // Refresh token if needed
   if (connection.accessTokenExpiresAt && new Date() >= connection.accessTokenExpiresAt) {
+    if (!connection.encryptedRefreshToken) {
+      await db
+        .update(calendarConnections)
+        .set({ status: 'needs_reauth', updatedAt: new Date() })
+        .where(eq(calendarConnections.id, connection.id))
+      return NextResponse.json({ error: 'Re-authorization required' }, { status: 401 })
+    }
     try {
       const { GoogleCalendarClient } = await import('@fathom/integrations/google')
       const client = new GoogleCalendarClient()
-      const refreshToken = await decrypt(connection.encryptedRefreshToken ?? '')
+      const refreshToken = await decrypt(connection.encryptedRefreshToken)
       const refreshed = await client.refreshAccessToken(refreshToken)
       accessToken = refreshed.accessToken
 
@@ -81,19 +88,37 @@ export async function POST() {
       const endsAt = event.end.dateTime ? new Date(event.end.dateTime) : null
       if (!startsAt) continue
 
-      await db
-        .insert(meetings)
-        .values({
-          userId: session.user.id,
-          title: event.summary ?? 'Untitled Meeting',
-          meetingUrl,
-          source: 'calendar',
-          status: 'scheduled',
-          visibility: 'private',
-          startsAt,
-          endsAt,
-        })
-        .onConflictDoNothing()
+      // Dedup: skip if a meeting with same user + URL already exists on this day
+      const dayStart = new Date(startsAt)
+      dayStart.setHours(0, 0, 0, 0)
+      const dayEnd = new Date(dayStart)
+      dayEnd.setDate(dayEnd.getDate() + 1)
+
+      const [exists] = await db
+        .select({ id: meetings.id })
+        .from(meetings)
+        .where(
+          and(
+            eq(meetings.userId, session.user.id),
+            eq(meetings.meetingUrl, meetingUrl),
+            gte(meetings.startsAt, dayStart),
+            lt(meetings.startsAt, dayEnd),
+          )
+        )
+        .limit(1)
+
+      if (exists) continue
+
+      await db.insert(meetings).values({
+        userId: session.user.id,
+        title: event.summary ?? 'Untitled Meeting',
+        meetingUrl,
+        source: 'calendar',
+        status: 'scheduled',
+        visibility: 'private',
+        startsAt,
+        endsAt,
+      })
 
       created++
     }
