@@ -108,7 +108,7 @@ export async function runSummaryGenerate(
 
   await db
     .update(meetings)
-    .set({ status: 'ready', updatedAt: new Date() })
+    .set({ status: 'ready', processingErrorCode: null, processingErrorMessage: null, updatedAt: new Date() })
     .where(eq(meetings.id, meetingId))
 
   return { success: true }
