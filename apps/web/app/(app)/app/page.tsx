@@ -12,7 +12,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ParticipantAvatars } from '@/components/meeting/participant-avatars'
 import { CaptureToggle } from '@/components/meeting/capture-toggle'
-import { formatDuration } from '@/lib/utils'
+import { formatDuration, meetingStatusVariant } from '@/lib/utils'
 import { MEETING_STATUS_LABELS } from '@fathom/core'
 import type { MeetingStatus } from '@fathom/core'
 
@@ -27,6 +27,7 @@ export default async function DashboardPage() {
     getDb().select({ status: calendarConnections.status }).from(calendarConnections).where(eq(calendarConnections.userId, session.user.id)).limit(1),
   ])
   const needsReauth = connection?.status === 'needs_reauth' || connection?.status === 'error'
+  const isConnected = connection?.status === 'connected'
 
   const now = new Date()
   const upcomingMeetings = allMeetings.filter(
@@ -43,14 +44,6 @@ export default async function DashboardPage() {
     hour < 12 ? `Good morning, ${firstName}` :
     hour < 17 ? `Good afternoon, ${firstName}` :
     `Good evening, ${firstName}`
-
-  function getStatusVariant(status: string) {
-    if (status === 'recording') return 'destructive'
-    if (status === 'ready') return 'success'
-    if (status === 'processing') return 'purple'
-    if (['bot_queued', 'bot_starting', 'waiting_for_admission'].includes(status)) return 'warning'
-    return 'secondary'
-  }
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -102,23 +95,42 @@ export default async function DashboardPage() {
         </div>
       )}
 
-      {/* No calendar connected */}
+      {/* Empty state — tailored to whether the calendar is already connected */}
       {allMeetings.length === 0 && !needsReauth && (
         <Card className="mb-6">
           <CardContent className="p-6 text-center">
             <Calendar className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
-            <h3 className="font-semibold mb-1">Connect your calendar</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              Discover upcoming Google Meet calls and schedule your notetaker automatically.
-            </p>
-            <div className="flex gap-2 justify-center">
-              <Link href="/app/settings/calendar">
-                <Button size="sm">Connect Google Calendar</Button>
-              </Link>
-              <Link href="/app/meetings/new">
-                <Button variant="outline" size="sm">Add a Meet manually</Button>
-              </Link>
-            </div>
+            {isConnected ? (
+              <>
+                <h3 className="font-semibold mb-1">No meetings yet</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Your calendar is connected. Upcoming Google Meet calls will appear here — or sync now to fetch them.
+                </p>
+                <div className="flex gap-2 justify-center">
+                  <Link href="/app/settings/calendar">
+                    <Button size="sm">Sync calendar</Button>
+                  </Link>
+                  <Link href="/app/meetings/new">
+                    <Button variant="outline" size="sm">Add a Meet manually</Button>
+                  </Link>
+                </div>
+              </>
+            ) : (
+              <>
+                <h3 className="font-semibold mb-1">Connect your calendar</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Discover upcoming Google Meet calls and schedule your notetaker automatically.
+                </p>
+                <div className="flex gap-2 justify-center">
+                  <Link href="/app/settings/calendar">
+                    <Button size="sm">Connect Google Calendar</Button>
+                  </Link>
+                  <Link href="/app/meetings/new">
+                    <Button variant="outline" size="sm">Add a Meet manually</Button>
+                  </Link>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
       )}
@@ -148,7 +160,7 @@ export default async function DashboardPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{meeting.title}</p>
-                    <Badge variant={getStatusVariant(meeting.status) as any} className="text-[10px] mt-0.5">
+                    <Badge variant={meetingStatusVariant(meeting.status)} className="text-[10px] mt-0.5">
                       {MEETING_STATUS_LABELS[meeting.status as MeetingStatus] ?? meeting.status}
                     </Badge>
                   </div>
@@ -194,7 +206,7 @@ export default async function DashboardPage() {
                     </div>
                   </div>
                   <div className="shrink-0 flex items-center gap-2">
-                    <Badge variant={getStatusVariant(meeting.status) as any} className="text-[10px]">
+                    <Badge variant={meetingStatusVariant(meeting.status)} className="text-[10px]">
                       {MEETING_STATUS_LABELS[meeting.status as MeetingStatus] ?? meeting.status}
                     </Badge>
                   </div>
