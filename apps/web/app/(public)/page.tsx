@@ -21,7 +21,7 @@ export default function LandingPage() {
               </Button>
             </Link>
             <Link href="/login">
-              <Button size="sm">Try with Google</Button>
+              <Button size="sm">Continue with Google</Button>
             </Link>
           </div>
         </div>
@@ -47,7 +47,7 @@ export default function LandingPage() {
         <div className="flex items-center justify-center gap-3">
           <Link href="/login">
             <Button size="lg" className="gap-2">
-              Try with Google
+              Continue with Google
               <ChevronRight className="h-4 w-4" />
             </Button>
           </Link>
@@ -189,7 +189,7 @@ export default function LandingPage() {
           </p>
           <Link href="/login">
             <Button size="lg" variant="secondary" className="gap-2">
-              Try with Google
+              Continue with Google
               <ChevronRight className="h-4 w-4" />
             </Button>
           </Link>
