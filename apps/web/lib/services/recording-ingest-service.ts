@@ -62,12 +62,35 @@ export async function runRecordingIngest(meetingId: string, recallBotId: string)
     })
     .where(eq(meetings.id, meetingId))
 
-  // Chain directly into summary generation — no queue hop needed
+  // Chain directly into summary generation — no queue hop needed. Recording and
+  // transcript are already available at this point, so regardless of what
+  // happens with the summary the meeting must still land on 'ready' — never
+  // leave it stuck on 'processing' with no way for the user to recover.
   if (process.env['AI_API_KEY']) {
     try {
-      await runSummaryGenerate(meetingId)
+      const result = await runSummaryGenerate(meetingId)
+      if (!result.success) {
+        await db
+          .update(meetings)
+          .set({ status: 'ready', processingErrorCode: 'summary_generation_failed', processingErrorMessage: result.error ?? null, updatedAt: new Date() })
+          .where(eq(meetings.id, meetingId))
+      }
     } catch (err) {
       console.error('[recording-ingest] Summary generation failed:', err)
+      await db
+        .update(meetings)
+        .set({
+          status: 'ready',
+          processingErrorCode: 'summary_generation_failed',
+          processingErrorMessage: err instanceof Error ? err.message : String(err),
+          updatedAt: new Date(),
+        })
+        .where(eq(meetings.id, meetingId))
     }
+  } else {
+    await db
+      .update(meetings)
+      .set({ status: 'ready', processingErrorCode: 'no_ai_provider_configured', updatedAt: new Date() })
+      .where(eq(meetings.id, meetingId))
   }
 }

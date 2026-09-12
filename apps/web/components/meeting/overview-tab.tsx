@@ -66,12 +66,42 @@ export function OverviewTab({
   onSeek,
   isReadOnly,
 }: OverviewTabProps) {
-  const [activeTemplate, setActiveTemplate] = useState<SummaryTemplateKey>(
-    (summary?.templateKey as SummaryTemplateKey) ?? 'general'
+  const initialTemplate = (summary?.templateKey as SummaryTemplateKey) ?? 'general'
+  const [activeTemplate, setActiveTemplate] = useState<SummaryTemplateKey>(initialTemplate)
+  const [summaryCache, setSummaryCache] = useState<Partial<Record<SummaryTemplateKey, OverviewTabProps['summary']>>>(
+    summary ? { [initialTemplate]: summary } : {}
   )
+  const [loadingTemplate, setLoadingTemplate] = useState<SummaryTemplateKey | null>(null)
   const [checkedItems, setCheckedItems] = useState<Set<string>>(
     new Set(actionItems.filter((i) => i.status === 'done').map((i) => i.id))
   )
+
+  const activeSummary = summaryCache[activeTemplate] ?? null
+
+  async function handleSelectTemplate(key: SummaryTemplateKey) {
+    if (key === activeTemplate) return
+    if (summaryCache[key]) {
+      setActiveTemplate(key)
+      return
+    }
+    if (isReadOnly) return
+
+    setLoadingTemplate(key)
+    try {
+      const res = await fetch(`/api/meetings/${meeting.id}/summary/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ templateKey: key }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setSummaryCache((prev) => ({ ...prev, [key]: { ...data.summary, templateKey: key } }))
+        setActiveTemplate(key)
+      }
+    } finally {
+      setLoadingTemplate(null)
+    }
+  }
 
   const segmentById = new Map(segments.map((s) => [s.id, s]))
 
@@ -106,30 +136,31 @@ export function OverviewTab({
         {TEMPLATES.map((key) => (
           <button
             key={key}
-            onClick={() => setActiveTemplate(key)}
+            onClick={() => handleSelectTemplate(key)}
+            disabled={loadingTemplate !== null || (isReadOnly && !summaryCache[key])}
             className={cn(
-              'px-2.5 py-1 rounded-full text-xs font-medium transition-colors',
+              'px-2.5 py-1 rounded-full text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
               activeTemplate === key
                 ? 'bg-primary text-white'
                 : 'bg-muted text-muted-foreground hover:bg-muted/80'
             )}
           >
-            {SUMMARY_TEMPLATE_LABELS[key]}
+            {loadingTemplate === key ? 'Generating…' : SUMMARY_TEMPLATE_LABELS[key]}
           </button>
         ))}
       </div>
 
       {/* Summary */}
-      {summary ? (
+      {activeSummary ? (
         <section>
           <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
             Summary
           </h2>
-          <p className="text-sm text-foreground leading-relaxed">{summary.overview}</p>
+          <p className="text-sm text-foreground leading-relaxed">{activeSummary.overview}</p>
         </section>
       ) : (
         <section className="text-sm text-muted-foreground">
-          {meeting ? 'No summary available yet.' : 'Processing notes…'}
+          {loadingTemplate ? 'Generating summary…' : meeting ? 'No summary available yet.' : 'Processing notes…'}
         </section>
       )}
 

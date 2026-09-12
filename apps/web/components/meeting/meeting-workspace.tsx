@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Share2, MoreHorizontal, Clock, Users, Calendar } from 'lucide-react'
+import { ArrowLeft, Clock, Users, Calendar } from 'lucide-react'
 import { format } from 'date-fns'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -11,6 +11,8 @@ import { OverviewTab } from './overview-tab'
 import { TranscriptTab } from './transcript-tab'
 import { AskTab } from './ask-tab'
 import { MeetingStatusBanner } from './meeting-status-banner'
+import { NotesFailedBanner } from './notes-failed-banner'
+import { ShareDialog } from './share-dialog'
 import { ParticipantAvatars } from './participant-avatars'
 import { formatDuration } from '@/lib/utils'
 
@@ -23,6 +25,7 @@ interface Meeting {
   meetingUrl: string | null
   recordingStoragePath: string | null
   transcriptStatus: string
+  processingErrorCode: string | null
 }
 
 interface Participant {
@@ -163,12 +166,7 @@ export function MeetingWorkspace({
 
           <div className="flex items-center gap-2 shrink-0">
             <ParticipantAvatars participants={participants} max={4} />
-            {!isDemo && !isReadOnly && (
-              <Button variant="outline" size="sm" className="gap-1.5">
-                <Share2 className="h-3.5 w-3.5" />
-                Share
-              </Button>
-            )}
+            {!isDemo && !isReadOnly && <ShareDialog meetingId={meeting.id} />}
             {isDemo && (
               <Link href="/login">
                 <Button size="sm" variant="outline">Sign in to share</Button>
@@ -184,6 +182,11 @@ export function MeetingWorkspace({
           status={meeting.status}
           meetingId={meeting.id}
         />
+      )}
+
+      {/* Recording/transcript succeeded but AI notes failed to generate */}
+      {meeting.status === 'ready' && meeting.processingErrorCode === 'summary_generation_failed' && !isDemo && !isReadOnly && (
+        <NotesFailedBanner meetingId={meeting.id} />
       )}
 
       {/* Main content */}
@@ -235,6 +238,8 @@ export function MeetingWorkspace({
                   segments={segments}
                   currentTimeMs={currentTimeMs}
                   onSeek={seekTo}
+                  meetingId={meeting.id}
+                  isReadOnly={isDemo || isReadOnly}
                 />
               </TabsContent>
 

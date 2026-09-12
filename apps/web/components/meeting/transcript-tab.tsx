@@ -2,8 +2,10 @@
 
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Search, X } from 'lucide-react'
+import { Search, X, Tag } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 import { cn, formatTimestamp, getInitials, getAvatarColor } from '@/lib/utils'
 
 interface TranscriptSegment {
@@ -19,6 +21,8 @@ interface TranscriptTabProps {
   segments: TranscriptSegment[]
   currentTimeMs: number
   onSeek: (ms: number) => void
+  meetingId?: string
+  isReadOnly?: boolean
 }
 
 function binarySearchCurrentSegment(segments: TranscriptSegment[], timeMs: number): number {
@@ -44,13 +48,69 @@ function binarySearchCurrentSegment(segments: TranscriptSegment[], timeMs: numbe
   return -1
 }
 
-export function TranscriptTab({ segments, currentTimeMs, onSeek }: TranscriptTabProps) {
+export function TranscriptTab({ segments, currentTimeMs, onSeek, meetingId, isReadOnly }: TranscriptTabProps) {
   const parentRef = useRef<HTMLDivElement>(null)
+  const router = useRouter()
   const [query, setQuery] = useState('')
   const [autoFollow, setAutoFollow] = useState(true)
   const [activeIndex, setActiveIndex] = useState(-1)
   const userScrolling = useRef(false)
   const scrollTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+
+  const [selectStart, setSelectStart] = useState<number | null>(null)
+  const [selectEnd, setSelectEnd] = useState<number | null>(null)
+  const [highlightTitle, setHighlightTitle] = useState('')
+  const [creating, setCreating] = useState(false)
+
+  const canHighlight = !isReadOnly && !!meetingId
+
+  function handleSegmentClick(index: number, startMs: number) {
+    if (selectStart === null) {
+      onSeek(startMs)
+      return
+    }
+    // In selection mode: first click sets/replaces start, second sets end
+    if (selectEnd === null && index !== selectStart) {
+      setSelectEnd(index)
+    } else {
+      setSelectStart(index)
+      setSelectEnd(null)
+    }
+  }
+
+  function beginSelection(index: number) {
+    setSelectStart(index)
+    setSelectEnd(null)
+  }
+
+  function cancelSelection() {
+    setSelectStart(null)
+    setSelectEnd(null)
+    setHighlightTitle('')
+  }
+
+  async function handleCreateHighlight() {
+    if (selectStart === null || !meetingId || !highlightTitle.trim()) return
+    const endIndex = selectEnd ?? selectStart
+    const [from, to] = selectStart <= endIndex ? [selectStart, endIndex] : [endIndex, selectStart]
+    const startMs = segments[from]!.startMs
+    const endMs = segments[to]!.endMs
+
+    setCreating(true)
+    try {
+      const res = await fetch(`/api/meetings/${meetingId}/highlights`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: highlightTitle.trim(), startMs, endMs, type: 'highlight' }),
+      })
+      if (res.ok) {
+        cancelSelection()
+        router.refresh()
+      }
+    } finally {
+      setCreating(false)
+    }
+  }
 
   const filteredSegments = useMemo(() => {
     if (!query.trim()) return segments
@@ -66,6 +126,7 @@ export function TranscriptTab({ segments, currentTimeMs, onSeek }: TranscriptTab
     getScrollElement: () => parentRef.current,
     estimateSize: () => 80,
     overscan: 5,
+    measureElement: (el) => el.getBoundingClientRect().height,
   })
 
   // Update active segment from playback time
@@ -120,6 +181,37 @@ export function TranscriptTab({ segments, currentTimeMs, onSeek }: TranscriptTab
         )}
       </div>
 
+      {/* Highlight selection toolbar */}
+      {selectStart !== null && (
+        <div className="flex-shrink-0 px-4 py-2.5 border-b bg-amber-50 space-y-2">
+          {selectEnd === null && (
+            <p className="text-[11px] text-amber-800">
+              Click another segment to extend the range, or give it a title and create now.
+            </p>
+          )}
+          <div className="flex items-center gap-2">
+            <Input
+              value={highlightTitle}
+              onChange={(e) => setHighlightTitle(e.target.value)}
+              placeholder="Highlight title…"
+              className="h-7 text-xs flex-1"
+              autoFocus
+            />
+            <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={cancelSelection}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              className="h-7 text-xs"
+              onClick={handleCreateHighlight}
+              disabled={creating || !highlightTitle.trim()}
+            >
+              {creating ? 'Creating…' : 'Create'}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Auto-follow toggle */}
       {!query && (
         <div className="flex-shrink-0 px-4 py-1.5 border-b flex items-center justify-between">
@@ -157,6 +249,11 @@ export function TranscriptTab({ segments, currentTimeMs, onSeek }: TranscriptTab
             const isActive = !query && originalIndex === activeIndex
             const highlightQuery = query.trim().toLowerCase()
 
+            const selecting = selectStart !== null
+            const rangeFrom = selecting ? Math.min(selectStart!, selectEnd ?? selectStart!) : -1
+            const rangeTo = selecting ? Math.max(selectStart!, selectEnd ?? selectStart!) : -1
+            const inRange = selecting && originalIndex >= rangeFrom && originalIndex <= rangeTo
+
             function highlightText(text: string) {
               if (!highlightQuery) return text
               const idx = text.toLowerCase().indexOf(highlightQuery)
@@ -175,21 +272,23 @@ export function TranscriptTab({ segments, currentTimeMs, onSeek }: TranscriptTab
             return (
               <div
                 key={virtualItem.key}
+                data-index={virtualItem.index}
+                ref={rowVirtualizer.measureElement}
                 style={{
                   position: 'absolute',
                   top: 0,
                   left: 0,
                   width: '100%',
-                  height: `${virtualItem.size}px`,
                   transform: `translateY(${virtualItem.start}px)`,
                 }}
               >
-                <button
+                <div
                   className={cn(
-                    'w-full text-left px-4 py-3 flex gap-3 hover:bg-muted/50 transition-colors',
-                    isActive && 'bg-primary/5 border-l-2 border-primary'
+                    'group w-full text-left px-4 py-3 flex gap-3 hover:bg-muted/50 transition-colors cursor-pointer',
+                    isActive && 'bg-primary/5 border-l-2 border-primary',
+                    inRange && 'bg-amber-50'
                   )}
-                  onClick={() => onSeek(segment.startMs)}
+                  onClick={() => (selecting ? handleSegmentClick(originalIndex, segment.startMs) : onSeek(segment.startMs))}
                 >
                   <div
                     className={cn(
@@ -217,7 +316,19 @@ export function TranscriptTab({ segments, currentTimeMs, onSeek }: TranscriptTab
                       {highlightText(segment.text)}
                     </p>
                   </div>
-                </button>
+                  {canHighlight && !selecting && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        beginSelection(originalIndex)
+                      }}
+                      className="shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-amber-500 transition-opacity"
+                      title="Create highlight from here"
+                    >
+                      <Tag className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
             )
           })}
