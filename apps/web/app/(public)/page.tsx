@@ -1,17 +1,19 @@
 import Link from 'next/link'
+import Image from 'next/image'
 import { Button } from '@/components/ui/button'
-import { Mic, Calendar, FileText, Search, Share2, ChevronRight } from 'lucide-react'
+import { Mic, Calendar, FileText, Search, Share2, ChevronRight, Sparkles } from 'lucide-react'
+import { AmbientBackground } from '@/components/illustrations/ambient-background'
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-white">
+    <div className="relative min-h-screen bg-white overflow-hidden">
+      <AmbientBackground />
+
       {/* Nav */}
-      <header className="border-b">
+      <header className="border-b relative">
         <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary">
-              <Mic className="h-4 w-4 text-white" />
-            </div>
+            <Image src="/logo.svg" alt="" width={28} height={28} className="h-7 w-7" />
             <span className="font-semibold text-sm">Fathom 8x</span>
           </div>
           <div className="flex items-center gap-3">
@@ -93,8 +95,40 @@ export default function LandingPage() {
         </div>
       </main>
 
+      {/* How it works */}
+      <section className="relative py-20">
+        <div className="max-w-5xl mx-auto px-6">
+          <div className="text-center mb-14">
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">How it works</h2>
+            <p className="text-sm text-muted-foreground mt-2">From calendar invite to shareable summary — fully automatic.</p>
+          </div>
+
+          <div className="relative grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-6">
+            {/* Connector line (desktop only) */}
+            <div className="hidden md:block absolute top-7 left-[16.5%] right-[16.5%] h-px border-t border-dashed border-border" />
+
+            {[
+              { icon: Calendar, step: '01', title: 'Connect your calendar', desc: 'Sign in with Google. Fathom 8x reads your upcoming Meet invites automatically.' },
+              { icon: Mic, step: '02', title: 'Notetaker joins the call', desc: 'A visible AI participant joins each meeting, recording and transcribing in real time.' },
+              { icon: Sparkles, step: '03', title: 'Get an instant summary', desc: 'Decisions, action items, and topics are extracted and ready the moment the call ends.' },
+            ].map(({ icon: Icon, step, title, desc }) => (
+              <div key={step} className="relative flex flex-col items-center text-center">
+                <div className="relative z-10 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm mb-4">
+                  <Icon className="h-6 w-6" />
+                </div>
+                <span className="text-[10px] font-mono font-semibold uppercase tracking-wider text-muted-foreground/70 mb-1">
+                  Step {step}
+                </span>
+                <h3 className="font-semibold text-sm mb-1.5">{title}</h3>
+                <p className="text-sm text-muted-foreground max-w-[240px]">{desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* Features */}
-      <section className="border-t bg-muted/20 py-16">
+      <section className="border-t bg-muted/20 py-16 relative">
         <div className="max-w-6xl mx-auto px-6">
           <div className="grid grid-cols-2 md:grid-cols-3 gap-8">
             {[
@@ -141,6 +175,24 @@ export default function LandingPage() {
               )
             })}
           </div>
+        </div>
+      </section>
+
+      {/* Final CTA */}
+      <section className="relative border-t bg-primary py-16">
+        <div className="max-w-3xl mx-auto px-6 text-center">
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-primary-foreground mb-3">
+            Stop taking notes. Start being present.
+          </h2>
+          <p className="text-sm text-primary-foreground/70 mb-8 max-w-lg mx-auto">
+            Connect your calendar in under a minute — your first automated meeting summary is on its way to you already.
+          </p>
+          <Link href="/login">
+            <Button size="lg" variant="secondary" className="gap-2">
+              Try with Google
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </Link>
         </div>
       </section>
 

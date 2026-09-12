@@ -1,7 +1,8 @@
 import Link from 'next/link'
-import { Mic } from 'lucide-react'
+import Image from 'next/image'
 import { SignInButton } from '@/components/auth/sign-in-button'
 import { DevSignIn } from '@/components/auth/dev-sign-in'
+import { MeetingFlowIllustration } from '@/components/illustrations/meeting-flow-illustration'
 
 export const metadata = { title: 'Sign in' }
 
@@ -13,19 +14,36 @@ const isDevBypass =
 
 export default function LoginPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-muted/20">
-      <div className="w-full max-w-sm">
-        <div className="bg-white rounded-[14px] border shadow-sm p-8 text-center">
-          {/* Logo */}
-          <div className="flex justify-center mb-6">
-            <div className="flex items-center gap-2">
-              <div className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-primary">
-                <Mic className="h-5 w-5 text-white" />
-              </div>
-            </div>
+    <div className="min-h-screen grid lg:grid-cols-2">
+      {/* Left: brand / illustration panel */}
+      <div className="hidden lg:flex relative flex-col justify-between bg-primary p-10 overflow-hidden">
+        <Link href="/" className="relative z-10 flex items-center gap-2">
+          <Image src="/logo.svg" alt="" width={28} height={28} className="h-7 w-7" />
+          <span className="font-semibold text-sm text-primary-foreground">Fathom 8x</span>
+        </Link>
+
+        <div className="relative z-10 flex-1 flex items-center justify-center py-10">
+          <MeetingFlowIllustration />
+        </div>
+
+        <div className="relative z-10 max-w-sm">
+          <p className="text-lg font-medium text-primary-foreground leading-snug">
+            Every Google Meet call, recorded, transcribed, and distilled — automatically.
+          </p>
+          <p className="mt-2 text-sm text-primary-foreground/70">
+            Connect your calendar once. Never take notes again.
+          </p>
+        </div>
+      </div>
+
+      {/* Right: sign-in form */}
+      <div className="flex items-center justify-center p-6 sm:p-10">
+        <div className="w-full max-w-sm">
+          <div className="lg:hidden flex justify-center mb-6">
+            <Image src="/logo.svg" alt="" width={36} height={36} className="h-9 w-9" />
           </div>
 
-          <h1 className="text-xl font-semibold mb-1">Sign in to Fathom 8x</h1>
+          <h1 className="text-2xl font-semibold tracking-tight mb-1">Sign in to Fathom 8x</h1>
           <p className="text-sm text-muted-foreground mb-8">
             AI meeting notes for Google Meet
           </p>
@@ -48,11 +66,7 @@ export default function LoginPage() {
 
             {!hasGoogleOAuth && !isDevBypass && (
               <p className="text-sm text-muted-foreground py-4">
-                Authentication is not configured. Set{' '}
-                <code className="text-xs bg-muted px-1 py-0.5 rounded">GOOGLE_CLIENT_ID</code>{' '}
-                and{' '}
-                <code className="text-xs bg-muted px-1 py-0.5 rounded">GOOGLE_CLIENT_SECRET</code>
-                {' '}in your environment variables.
+                Sign-in is temporarily unavailable. Please check back shortly, or explore the demo below.
               </p>
             )}
           </div>
@@ -67,14 +81,14 @@ export default function LoginPage() {
               Privacy Policy
             </Link>
           </p>
-        </div>
 
-        <p className="mt-4 text-center text-sm text-muted-foreground">
-          Just browsing?{' '}
-          <Link href="/demo" className="font-medium text-foreground hover:underline">
-            Explore the demo
-          </Link>
-        </p>
+          <p className="mt-8 text-center text-sm text-muted-foreground">
+            Just browsing?{' '}
+            <Link href="/demo" className="font-medium text-foreground hover:underline">
+              Explore the demo
+            </Link>
+          </p>
+        </div>
       </div>
     </div>
   )
