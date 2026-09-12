@@ -5,8 +5,11 @@ import { meetings, calendarConnections } from '@fathom/db/schema'
 import { eq, and, gte, lte, desc } from 'drizzle-orm'
 import Link from 'next/link'
 import { Calendar, Plus, Clock, AlertTriangle } from 'lucide-react'
-import { formatDuration } from '@fathom/core'
+import { MEETING_STATUS_LABELS } from '@fathom/core'
+import type { MeetingStatus } from '@fathom/core'
 import { CaptureToggle } from '@/components/meeting/capture-toggle'
+import { Badge } from '@/components/ui/badge'
+import { meetingStatusVariant } from '@/lib/utils'
 
 function formatDate(date: Date) {
   return date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
@@ -144,12 +147,9 @@ export default async function CalendarPage() {
                         {m.status === 'scheduled' ? (
                           <CaptureToggle meetingId={m.id} captureOverride={m.captureOverride} />
                         ) : (
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                            m.status === 'recording' ? 'bg-red-50 text-red-600' :
-                            'bg-muted text-muted-foreground'
-                          }`}>
-                            {m.status}
-                          </span>
+                          <Badge variant={meetingStatusVariant(m.status)} className="text-[10px] shrink-0">
+                            {MEETING_STATUS_LABELS[m.status as MeetingStatus] ?? m.status}
+                          </Badge>
                         )}
                       </div>
                     </div>

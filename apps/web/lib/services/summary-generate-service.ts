@@ -1,6 +1,6 @@
 import { getDb } from '@fathom/db'
 import { meetings, transcriptSegments, meetingSummaries, actionItems, decisions, topics } from '@fathom/db/schema'
-import { eq, asc } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 
 type TemplateKey = 'general' | 'sales' | 'one_on_one' | 'interview' | 'project'
 
@@ -17,7 +17,7 @@ export async function runSummaryGenerate(
     .select()
     .from(transcriptSegments)
     .where(eq(transcriptSegments.meetingId, meetingId))
-    .orderBy(asc(transcriptSegments.sequence))
+    .orderBy(transcriptSegments.startMs)
 
   if (segments.length === 0) {
     return { success: false, error: 'No transcript segments' }

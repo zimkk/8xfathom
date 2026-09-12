@@ -15,10 +15,47 @@ import type { NextRequest } from 'next/server'
 // verification happens downstream.
 const SESSION_COOKIE_NAMES = ['authjs.session-token', '__Secure-authjs.session-token']
 
+// The Chrome extension calls /api/extension/* from a content script running on the meeting page,
+// so those requests are cross-origin (Origin: https://meet.google.com) and need CORS headers plus
+// a preflight (OPTIONS) response. Additional origins can be allowed via EXTENSION_ALLOWED_ORIGINS
+// (comma-separated) — e.g. a chrome-extension://<id> origin if the extension ever calls directly.
+const EXTENSION_ALLOWED_ORIGINS = new Set(
+  [
+    'https://meet.google.com',
+    ...(process.env['EXTENSION_ALLOWED_ORIGINS']?.split(',').map((o) => o.trim()).filter(Boolean) ?? []),
+  ],
+)
+
+function applyCors(response: NextResponse, origin: string | null): NextResponse {
+  if (origin && EXTENSION_ALLOWED_ORIGINS.has(origin)) {
+    // Echo the specific origin (never "*") because these requests carry credentials (the session
+    // cookie); the spec forbids "*" with credentials.
+    response.headers.set('Access-Control-Allow-Origin', origin)
+    response.headers.set('Access-Control-Allow-Credentials', 'true')
+    response.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+    response.headers.set('Access-Control-Max-Age', '86400')
+    response.headers.append('Vary', 'Origin')
+  }
+  return response
+}
+
 export default function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl
+
+  // CORS for the extension API surface
+  if (pathname.startsWith('/api/extension')) {
+    const origin = request.headers.get('origin')
+    if (request.method === 'OPTIONS') {
+      // Preflight — answer here so it never falls through to a route that has no OPTIONS handler.
+      return applyCors(new NextResponse(null, { status: 204 }), origin)
+    }
+    return applyCors(NextResponse.next(), origin)
+  }
+
   const hasSessionCookie = SESSION_COOKIE_NAMES.some((name) => request.cookies.has(name))
 
-  if (!hasSessionCookie && request.nextUrl.pathname.startsWith('/app')) {
+  if (!hasSessionCookie && pathname.startsWith('/app')) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 

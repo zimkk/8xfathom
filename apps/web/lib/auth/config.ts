@@ -13,11 +13,15 @@ if (process.env['GOOGLE_CLIENT_ID'] && process.env['GOOGLE_CLIENT_SECRET']) {
     Google({
       clientId: process.env['GOOGLE_CLIENT_ID'],
       clientSecret: process.env['GOOGLE_CLIENT_SECRET'],
+      // Sign-in requests identity scopes ONLY. Google issues a refresh token just once per
+      // scope grant, so if login also consumed the calendar scope, the dedicated
+      // /api/calendar/connect flow would get an access token with no refresh token and calendar
+      // sync would die at the first token expiry. Keeping calendar consent out of login makes
+      // connect the sole owner of the calendar refresh token.
       authorization: {
         params: {
-          scope: 'openid email profile https://www.googleapis.com/auth/calendar.readonly',
-          access_type: 'offline',
-          prompt: 'consent select_account',
+          scope: 'openid email profile',
+          prompt: 'select_account',
         },
       },
     })

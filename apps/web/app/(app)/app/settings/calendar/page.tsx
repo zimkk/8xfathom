@@ -9,7 +9,7 @@ import { CheckCircle, AlertCircle } from 'lucide-react'
 export default async function CalendarSettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ connected?: string; error?: string; detail?: string }>
+  searchParams: Promise<{ connected?: string; error?: string; detail?: string; synced?: string; disconnected?: string }>
 }) {
   const session = await auth()
   if (!session?.user?.id) redirect('/login')
@@ -41,11 +41,29 @@ export default async function CalendarSettingsPage({
         </div>
       )}
 
+      {params.synced !== undefined && (
+        <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-4 py-3 mb-6">
+          <CheckCircle className="h-4 w-4 shrink-0" />
+          Synced. {params.synced} meeting{params.synced === '1' ? '' : 's'} added or updated.
+        </div>
+      )}
+
+      {params.disconnected && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/40 border rounded-lg px-4 py-3 mb-6">
+          <CheckCircle className="h-4 w-4 shrink-0" />
+          Calendar disconnected.
+        </div>
+      )}
+
       {params.error && (
         <div className="flex flex-col gap-1 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-3 mb-6">
           <div className="flex items-center gap-2">
             <AlertCircle className="h-4 w-4 shrink-0" />
-            {params.error === 'access_denied' ? 'Calendar access was denied.' : 'Failed to connect calendar.'}
+            {params.error === 'access_denied'
+              ? 'Calendar access was denied.'
+              : params.error === 'sync_failed'
+                ? 'Calendar sync failed. Please try again.'
+                : 'Failed to connect calendar.'}
           </div>
           {params.detail && (
             <p className="text-xs text-red-600/80 font-mono pl-6">{params.detail}</p>

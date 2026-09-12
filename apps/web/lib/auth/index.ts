@@ -3,7 +3,6 @@ import { DrizzleAdapter } from '@auth/drizzle-adapter'
 import { waitUntil } from '@vercel/functions'
 import { authConfig } from './config'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyFn = (...args: any[]) => any
 
 let _na: { auth: AnyFn; handlers: { GET: AnyFn; POST: AnyFn }; signIn: AnyFn; signOut: AnyFn } | undefined
@@ -27,10 +26,11 @@ function getNextAuth() {
       }),
       session: { strategy: 'database' },
       events: {
-        // Fires on every Google sign-in (not just the first). Since we request
-        // calendar.readonly scope on the main login, this is where we turn the
-        // OAuth tokens Google just issued into an active calendar connection —
-        // no separate "connect calendar" step needed.
+        // Fires on every Google sign-in. Login now requests identity scopes only
+        // (calendar consent lives in the dedicated /api/calendar/connect flow so it
+        // owns the refresh token), so this only creates a calendar connection on the
+        // rare occasion a login token still carries calendar.readonly — otherwise it
+        // no-ops and the connect flow handles calendar access.
         async signIn({ user, account }) {
           if (account?.provider !== 'google' || !account.access_token || !user.id) return
 
@@ -103,17 +103,12 @@ function getNextAuth() {
   return _na!
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const auth: AnyFn = (...args: any[]) => getNextAuth().auth(...args)
 export const handlers = {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   GET: (...args: any[]) => getNextAuth().handlers.GET(...args),
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   POST: (...args: any[]) => getNextAuth().handlers.POST(...args),
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const signIn: AnyFn = (...args: any[]) => getNextAuth().signIn(...args)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const signOut: AnyFn = (...args: any[]) => getNextAuth().signOut(...args)
 
 export type { Session } from 'next-auth'

@@ -88,7 +88,9 @@ export async function getTranscriptSegments(meetingId: string) {
     .select()
     .from(transcriptSegments)
     .where(eq(transcriptSegments.meetingId, meetingId))
-    .orderBy(transcriptSegments.sequence)
+    // Order by start time, not `sequence` — real-time segments set sequence = startMs, so this
+    // is stable and correct across both real-time and batch-ingested transcripts.
+    .orderBy(transcriptSegments.startMs)
 }
 
 export async function getMeetingSummary(meetingId: string, templateKey = 'general') {
@@ -156,7 +158,17 @@ export async function updateActionItemStatus(
   userId: string
 ) {
   const db = getDb()
-  const [item] = await db.update(actionItems).set({ status, updatedAt: new Date() }).where(eq(actionItems.id, actionItemId)).returning()
+  // Scope the update to action items whose meeting is owned by this user — never trust the id alone.
+  const ownedMeetingIds = db
+    .select({ id: meetings.id })
+    .from(meetings)
+    .where(eq(meetings.userId, userId))
+
+  const [item] = await db
+    .update(actionItems)
+    .set({ status, updatedAt: new Date() })
+    .where(and(eq(actionItems.id, actionItemId), inArray(actionItems.meetingId, ownedMeetingIds)))
+    .returning()
   return item ?? null
 }
 

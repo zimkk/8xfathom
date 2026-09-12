@@ -56,3 +56,22 @@ export function truncate(str: string, maxLength: number): string {
   if (str.length <= maxLength) return str
   return str.slice(0, maxLength - 3) + '...'
 }
+
+// Single source of truth for how a meeting status maps to a Badge variant, so every surface
+// (dashboard, calendar, meeting detail) renders the same colour for the same state.
+export type MeetingBadgeVariant =
+  | 'default'
+  | 'secondary'
+  | 'destructive'
+  | 'success'
+  | 'warning'
+  | 'purple'
+
+export function meetingStatusVariant(status: string): MeetingBadgeVariant {
+  if (status === 'recording') return 'destructive'
+  if (status === 'ready') return 'success'
+  if (status === 'processing') return 'purple'
+  if (status === 'denied' || status === 'failed') return 'warning'
+  if (['bot_queued', 'bot_starting', 'waiting_for_admission'].includes(status)) return 'warning'
+  return 'secondary'
+}
