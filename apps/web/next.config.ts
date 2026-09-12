@@ -2,7 +2,6 @@ import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
   transpilePackages: ['@fathom/core', '@fathom/db', '@fathom/ui', '@fathom/integrations'],
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   webpack: (config: any) => {
     // Workspace packages use NodeNext .js extensions; remap to .ts for bundling
     config.resolve = config.resolve ?? {}
