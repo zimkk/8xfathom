@@ -6,9 +6,7 @@ import { AmbientBackground } from '@/components/illustrations/ambient-background
 
 export default function LandingPage() {
   return (
-    <div className="relative isolate min-h-screen bg-white overflow-hidden">
-      <AmbientBackground />
-
+    <div className="min-h-screen bg-white">
       {/* Nav */}
       <header className="border-b relative">
         <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
@@ -30,7 +28,9 @@ export default function LandingPage() {
       </header>
 
       {/* Hero */}
-      <main className="max-w-6xl mx-auto px-6 pt-20 pb-16 text-center">
+      <main className="relative isolate overflow-hidden max-w-6xl mx-auto px-6 pt-20 pb-16 text-center">
+        <AmbientBackground />
+
         <div className="inline-flex items-center gap-1.5 rounded-full border bg-muted/50 px-3 py-1 text-xs text-muted-foreground mb-6">
           <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
           Google Meet AI Notetaker
