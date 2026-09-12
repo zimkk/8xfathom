@@ -9,6 +9,7 @@ import { MEETING_STATUS_LABELS } from '@fathom/core'
 import type { MeetingStatus } from '@fathom/core'
 import { CaptureToggle } from '@/components/meeting/capture-toggle'
 import { Badge } from '@/components/ui/badge'
+import { SyncButton } from '@/components/calendar/sync-button'
 import { meetingStatusVariant } from '@/lib/utils'
 
 function formatDate(date: Date) {
@@ -63,13 +64,16 @@ export default async function CalendarPage() {
     <div className="p-6 max-w-2xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Calendar</h1>
-        <Link
-          href="/app/meetings/new"
-          className="flex items-center gap-2 bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors"
-        >
-          <Plus className="h-4 w-4" />
-          Add Notetaker
-        </Link>
+        <div className="flex items-center gap-2">
+          {isConnected && <SyncButton size="sm" variant="outline" />}
+          <Link
+            href="/app/meetings/new"
+            className="flex items-center gap-2 bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors"
+          >
+            <Plus className="h-4 w-4" />
+            Add Notetaker
+          </Link>
+        </div>
       </div>
 
       {needsReauth && (
@@ -119,6 +123,11 @@ export default async function CalendarPage() {
           <p className="text-xs mt-1">
             {isConnected ? 'Meetings with Google Meet links will appear here.' : 'Connect your calendar to see meetings.'}
           </p>
+          {isConnected && (
+            <div className="mt-4 flex justify-center">
+              <SyncButton size="sm" variant="outline" />
+            </div>
+          )}
         </div>
       ) : (
         <div className="space-y-6">

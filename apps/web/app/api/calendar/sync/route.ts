@@ -25,7 +25,7 @@ export async function POST() {
     .limit(1)
 
   if (!connection) {
-    return NextResponse.json({ error: 'No active calendar connection' }, { status: 422 })
+    return NextResponse.json({ error: 'No active calendar connection', needsConnect: true }, { status: 422 })
   }
 
   let accessToken: string
@@ -42,7 +42,7 @@ export async function POST() {
         .update(calendarConnections)
         .set({ status: 'needs_reauth', updatedAt: new Date() })
         .where(eq(calendarConnections.id, connection.id))
-      return NextResponse.json({ error: 'Re-authorization required' }, { status: 401 })
+      return NextResponse.json({ error: 'Re-authorization required', needsReauth: true }, { status: 401 })
     }
     try {
       const { GoogleCalendarClient } = await import('@fathom/integrations/google')
@@ -69,19 +69,17 @@ export async function POST() {
     }
   }
 
-  const appUrl = process.env['APP_URL'] ?? 'http://localhost:3000'
   try {
-    const { created, updated } = await syncUpcomingMeetings(session.user.id, accessToken, connection.id)
+    const { created, updated, cancelled, total } = await syncUpcomingMeetings(session.user.id, accessToken, connection.id)
 
     await db
       .update(calendarConnections)
       .set({ lastSyncedAt: new Date(), updatedAt: new Date() })
       .where(eq(calendarConnections.id, connection.id))
 
-    // Submitted from a <form> — redirect back to settings (303 → GET) with a result summary.
-    return NextResponse.redirect(`${appUrl}/app/settings/calendar?synced=${created + updated}`, 303)
+    return NextResponse.json({ ok: true, created, updated, cancelled, total })
   } catch (err) {
     console.error('Calendar sync error:', err)
-    return NextResponse.redirect(`${appUrl}/app/settings/calendar?error=sync_failed`, 303)
+    return NextResponse.json({ error: 'Sync failed' }, { status: 500 })
   }
 }

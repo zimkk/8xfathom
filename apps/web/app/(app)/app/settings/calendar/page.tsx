@@ -5,6 +5,7 @@ import { calendarConnections } from '@fathom/db/schema'
 import { eq, and } from 'drizzle-orm'
 import Link from 'next/link'
 import { CheckCircle, AlertCircle } from 'lucide-react'
+import { SyncButton } from '@/components/calendar/sync-button'
 
 export default async function CalendarSettingsPage({
   searchParams,
@@ -38,13 +39,6 @@ export default async function CalendarSettingsPage({
         <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-4 py-3 mb-6">
           <CheckCircle className="h-4 w-4 shrink-0" />
           Calendar connected successfully!
-        </div>
-      )}
-
-      {params.synced !== undefined && (
-        <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-4 py-3 mb-6">
-          <CheckCircle className="h-4 w-4 shrink-0" />
-          Synced. {params.synced} meeting{params.synced === '1' ? '' : 's'} added or updated.
         </div>
       )}
 
@@ -121,15 +115,13 @@ export default async function CalendarSettingsPage({
         </div>
 
         {isConnected && (
-          <div className="mt-4 pt-4 border-t">
-            <form action="/api/calendar/sync" method="POST">
-              <button
-                type="submit"
-                className="text-sm text-primary hover:underline"
-              >
-                Sync now
-              </button>
-            </form>
+          <div className="mt-4 pt-4 border-t flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">
+              {connection.lastSyncedAt
+                ? `Last synced ${connection.lastSyncedAt.toLocaleString()}`
+                : 'Not synced yet'}
+            </p>
+            <SyncButton size="sm" variant="outline" label="Sync now" />
           </div>
         )}
       </div>
