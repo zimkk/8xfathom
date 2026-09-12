@@ -9,7 +9,7 @@ import { CheckCircle, AlertCircle } from 'lucide-react'
 export default async function CalendarSettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ connected?: string; error?: string }>
+  searchParams: Promise<{ connected?: string; error?: string; detail?: string }>
 }) {
   const session = await auth()
   if (!session?.user?.id) redirect('/login')
@@ -42,9 +42,14 @@ export default async function CalendarSettingsPage({
       )}
 
       {params.error && (
-        <div className="flex items-center gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-3 mb-6">
-          <AlertCircle className="h-4 w-4 shrink-0" />
-          {params.error === 'access_denied' ? 'Calendar access was denied.' : 'Failed to connect calendar.'}
+        <div className="flex flex-col gap-1 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-3 mb-6">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            {params.error === 'access_denied' ? 'Calendar access was denied.' : 'Failed to connect calendar.'}
+          </div>
+          {params.detail && (
+            <p className="text-xs text-red-600/80 font-mono pl-6">{params.detail}</p>
+          )}
         </div>
       )}
 
