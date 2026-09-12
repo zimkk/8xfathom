@@ -12,6 +12,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ParticipantAvatars } from '@/components/meeting/participant-avatars'
 import { CaptureToggle } from '@/components/meeting/capture-toggle'
+import { SyncButton } from '@/components/calendar/sync-button'
 import { formatDuration, meetingStatusVariant } from '@/lib/utils'
 import { MEETING_STATUS_LABELS } from '@fathom/core'
 import type { MeetingStatus } from '@fathom/core'
@@ -107,9 +108,7 @@ export default async function DashboardPage() {
                   Your calendar is connected. Upcoming Google Meet calls will appear here — or sync now to fetch them.
                 </p>
                 <div className="flex gap-2 justify-center">
-                  <Link href="/app/settings/calendar">
-                    <Button size="sm">Sync calendar</Button>
-                  </Link>
+                  <SyncButton size="sm" />
                   <Link href="/app/meetings/new">
                     <Button variant="outline" size="sm">Add a Meet manually</Button>
                   </Link>
