@@ -42,7 +42,7 @@ function getNextAuth() {
             const encryptedRefreshToken = account.refresh_token ? await encrypt(account.refresh_token) : null
             const accessTokenExpiresAt = account.expires_at ? new Date(account.expires_at * 1000) : null
 
-            await db
+            const [connection] = await db
               .insert(calendarConnections)
               .values({
                 userId: user.id,
@@ -68,12 +68,15 @@ function getNextAuth() {
                   updatedAt: new Date(),
                 },
               })
+              .returning()
 
-            await syncUpcomingMeetings(user.id, account.access_token)
-            await db
-              .update(calendarConnections)
-              .set({ lastSyncedAt: new Date() })
-              .where(eq(calendarConnections.userId, user.id))
+            if (connection) {
+              await syncUpcomingMeetings(user.id, account.access_token, connection.id)
+              await db
+                .update(calendarConnections)
+                .set({ lastSyncedAt: new Date() })
+                .where(eq(calendarConnections.userId, user.id))
+            }
           } catch (err) {
             console.error('Failed to sync calendar connection on sign-in:', err)
           }

@@ -70,14 +70,14 @@ export async function POST() {
   }
 
   try {
-    const { created, total } = await syncUpcomingMeetings(session.user.id, accessToken)
+    const { created, updated, cancelled, total } = await syncUpcomingMeetings(session.user.id, accessToken, connection.id)
 
     await db
       .update(calendarConnections)
       .set({ lastSyncedAt: new Date(), updatedAt: new Date() })
       .where(eq(calendarConnections.id, connection.id))
 
-    return NextResponse.json({ ok: true, created, total })
+    return NextResponse.json({ ok: true, created, updated, cancelled, total })
   } catch (err) {
     console.error('Calendar sync error:', err)
     return NextResponse.json({ error: 'Sync failed' }, { status: 500 })

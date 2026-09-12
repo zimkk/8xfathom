@@ -1,7 +1,7 @@
 import { getDb } from '@fathom/db'
-import { meetings, captureSessions } from '@fathom/db/schema'
+import { meetings, captureSessions, calendarEvents, userCapturePreferences, users } from '@fathom/db/schema'
 import { eq } from 'drizzle-orm'
-import { validateGoogleMeetUrl, evaluateCaptureDecision } from '@fathom/core'
+import { validateGoogleMeetUrl, evaluateCaptureDecision, classifyMeeting } from '@fathom/core'
 import { RecallCaptureProvider } from '@fathom/integrations'
 import { meetingLifecycle } from './meeting-lifecycle-service'
 
@@ -24,12 +24,22 @@ export class CaptureOrchestrationService {
       return { success: false, error: 'Invalid Google Meet URL' }
     }
 
+    const [prefs] = meeting.userId
+      ? await db.select().from(userCapturePreferences).where(eq(userCapturePreferences.userId, meeting.userId)).limit(1)
+      : []
+    const [user] = meeting.userId
+      ? await db.select({ email: users.email }).from(users).where(eq(users.id, meeting.userId)).limit(1)
+      : []
+    const [calendarEvent] = meeting.calendarEventId
+      ? await db.select({ attendeeEmails: calendarEvents.attendeeEmails }).from(calendarEvents).where(eq(calendarEvents.id, meeting.calendarEventId)).limit(1)
+      : []
+
     const decision = evaluateCaptureDecision({
-      defaultMode: 'all',
-      classification: 'ambiguous',
-      override: 'inherit',
+      defaultMode: prefs?.defaultMode ?? 'all',
+      classification: user ? classifyMeeting(calendarEvent?.attendeeEmails ?? [], user.email) : 'ambiguous',
+      override: meeting.captureOverride,
       meetingUrl: meeting.meetingUrl,
-      isCancelled: false,
+      isCancelled: meeting.status === 'cancelled',
     })
 
     if (!decision.shouldCapture) {

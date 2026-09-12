@@ -11,6 +11,7 @@ export interface GoogleCalendarEvent {
   }
   attendees?: Array<{ email: string; displayName?: string; responseStatus: string }>
   organizer?: { email: string; displayName?: string }
+  status?: 'confirmed' | 'tentative' | 'cancelled'
 }
 
 export interface GoogleCalendarProvider {
