@@ -6,7 +6,7 @@ import { AmbientBackground } from '@/components/illustrations/ambient-background
 
 export default function LandingPage() {
   return (
-    <div className="relative min-h-screen bg-white overflow-hidden">
+    <div className="relative isolate min-h-screen bg-white overflow-hidden">
       <AmbientBackground />
 
       {/* Nav */}
