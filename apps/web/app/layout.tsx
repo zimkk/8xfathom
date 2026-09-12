@@ -28,7 +28,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.variable} font-sans antialiased`}>
+      {/* suppressHydrationWarning: extensions (Grammarly, password managers, Dark Reader, etc.)
+          mutate <body> attributes before React hydrates; without this that becomes a hydration
+          error that can blank the page. */}
+      <body className={`${inter.variable} font-sans antialiased`} suppressHydrationWarning>
         <Providers>{children}</Providers>
         <Analytics />
         <SpeedInsights />
