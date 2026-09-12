@@ -29,6 +29,12 @@ export class RecallCaptureProvider implements CaptureProvider {
     const baseUrl = getBaseUrl()
     const appUrl = process.env['APP_URL'] ?? 'http://localhost:3000'
 
+    // Real-time transcript segments are delivered via a `recording_config.realtime_endpoints`
+    // webhook — the current Recall API has no top-level `real_time_transcription` or `webhook_url`
+    // field (those are silently ignored). Bot *status* events (bot.joining_call … bot.done) are
+    // delivered to the account-level Svix endpoint configured in the Recall dashboard, which must
+    // also point at `${APP_URL}/api/webhooks/recall`.
+    // https://docs.recall.ai/docs/real-time-transcription
     const res = await fetch(`${baseUrl}/bot`, {
       method: 'POST',
       headers: getHeaders(),
@@ -36,14 +42,17 @@ export class RecallCaptureProvider implements CaptureProvider {
         meeting_url: input.meetingUrl,
         bot_name: input.botDisplayName ?? 'Fathom Notetaker',
         join_at: input.startAt.toISOString(),
-        webhook_url: `${appUrl}/api/webhooks/recall`,
         recording_config: {
           transcript: { provider: { meeting_captions: {} } },
-        },
-        // Real-time transcript segments delivered via webhook during the call
-        real_time_transcription: {
-          destination_url: `${appUrl}/api/webhooks/recall`,
-          partial_results: false,
+          realtime_endpoints: [
+            {
+              type: 'webhook',
+              url: `${appUrl}/api/webhooks/recall`,
+              // Finalized utterances only — partials would multiply webhook volume with no
+              // benefit since we persist finalized segments.
+              events: ['transcript.data'],
+            },
+          ],
         },
         metadata: { meetingId: input.meetingId, ...input.metadata },
       }),
@@ -134,7 +143,13 @@ export class RecallCaptureProvider implements CaptureProvider {
     const res = await fetch(`${baseUrl}/bot/${providerBotId}/transcript`, {
       headers: getHeaders(),
     })
-    if (!res.ok) return []
+    if (!res.ok) {
+      // Surface the failure instead of silently returning an empty transcript — a 4xx here
+      // usually means the transcript artifact isn't ready yet or the endpoint shape differs
+      // for this Recall API version.
+      console.error(`[recall] getTranscript ${res.status} for bot ${providerBotId}: ${await res.text()}`)
+      return []
+    }
 
     const data = await res.json() as Array<{
       speaker: string

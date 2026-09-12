@@ -128,7 +128,7 @@ Set `USE_MOCK_INTEGRATIONS=true` and `DEV_AUTH_BYPASS=true` to run without any e
 | `POST` | `/api/meetings/:id/ask` | Ask a question about the meeting |
 | `GET` | `/api/meetings/:id/share` | List share links |
 | `POST` | `/api/meetings/:id/share` | Create share link |
-| `POST` | `/api/calendar/connect` | Start Google Calendar OAuth |
+| `GET` | `/api/calendar/connect` | Start Google Calendar OAuth (redirects to Google) |
 | `POST` | `/api/calendar/sync` | Sync upcoming calendar events |
 | `GET` | `/api/search` | Full-text search across meetings |
 | `POST` | `/api/webhooks/recall` | Recall.ai webhook receiver |
@@ -182,6 +182,12 @@ pnpm seed:demo
 ---
 
 ## How meeting capture works
+
+> **Scheduling:** a Recall.ai bot is scheduled as soon as a meeting is created during calendar
+> sync (Recall accepts a future `join_at`). The daily `schedule-captures` cron is a backstop only.
+> Bot **status** and real-time **transcript** webhooks must both be pointed at
+> `${APP_URL}/api/webhooks/recall` — status events via the Recall dashboard webhook config, and
+> transcript events via the bot's `recording_config.realtime_endpoints` (set automatically).
 
 ```
 Google Calendar event (Meet URL detected)

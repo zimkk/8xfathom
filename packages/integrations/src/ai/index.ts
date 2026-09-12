@@ -21,26 +21,57 @@ export class OpenAIMeetingIntelligenceProvider implements MeetingIntelligencePro
     const apiKey = process.env['AI_API_KEY']
     if (!apiKey) throw new Error('AI_API_KEY not configured')
 
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: this.model,
-        messages,
-        temperature: 0.3,
-      }),
-    })
+    // Retry transient rate-limit / 5xx responses with exponential backoff.
+    const maxAttempts = 3
+    let lastErr = ''
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: this.model,
+          messages,
+          temperature: 0.3,
+          // Force valid JSON output — every caller parses JSON, and without this GPT-4o may wrap
+          // the object in prose or ```json fences, causing silent parse failures.
+          response_format: { type: 'json_object' },
+        }),
+      })
 
-    if (!res.ok) {
-      const err = await res.text()
-      throw new Error(`OpenAI API error ${res.status}: ${err}`)
+      if (res.ok) {
+        const data = await res.json() as { choices: Array<{ message: { content: string } }> }
+        return data.choices[0]?.message.content ?? ''
+      }
+
+      lastErr = `${res.status}: ${await res.text()}`
+      if (res.status === 429 || res.status >= 500) {
+        await new Promise((r) => setTimeout(r, 500 * 2 ** attempt))
+        continue
+      }
+      throw new Error(`OpenAI API error ${lastErr}`)
     }
+    throw new Error(`OpenAI API error after ${maxAttempts} attempts ${lastErr}`)
+  }
 
-    const data = await res.json() as { choices: Array<{ message: { content: string } }> }
-    return data.choices[0]?.message.content ?? ''
+  // Tolerant JSON parse: response_format should guarantee clean JSON, but strip ```json fences
+  // as a defensive fallback before giving up.
+  private parseJson<T>(raw: string): T | null {
+    try {
+      return JSON.parse(raw) as T
+    } catch {
+      const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/)
+      if (fenced?.[1]) {
+        try {
+          return JSON.parse(fenced[1]) as T
+        } catch {
+          return null
+        }
+      }
+      return null
+    }
   }
 
   private buildTranscriptChunk(
@@ -70,10 +101,7 @@ export class OpenAIMeetingIntelligenceProvider implements MeetingIntelligencePro
       }
     }
 
-    const allResults: MeetingExtraction[] = []
-    for (const chunk of chunks) {
-      const transcriptText = this.buildTranscriptChunk(chunk)
-      const prompt = `Analyze this meeting transcript and extract structured information.
+    const buildPrompt = (transcriptText: string) => `Analyze this meeting transcript and extract structured information.
 Each segment is labeled [seg:ID] — include these IDs in evidenceSegmentIds arrays (min 1 per item).
 
 Meeting title: ${input.title}
@@ -94,11 +122,20 @@ Return a JSON object with exactly this shape:
 
 Return only valid JSON.`
 
-      const response = await this.chat([{ role: 'user', content: prompt }])
-      try {
-        allResults.push(JSON.parse(response) as MeetingExtraction)
-      } catch {
-        // Skip malformed chunks rather than failing entirely
+    // Process chunks with bounded concurrency. Sequential calls blew the function time budget on
+    // long meetings; a small parallel pool keeps wall-time roughly flat as the meeting grows while
+    // staying within OpenAI rate limits.
+    const CONCURRENCY = 4
+    const allResults: MeetingExtraction[] = []
+    for (let i = 0; i < chunks.length; i += CONCURRENCY) {
+      const batch = chunks.slice(i, i + CONCURRENCY)
+      const responses = await Promise.all(
+        batch.map((chunk) => this.chat([{ role: 'user', content: buildPrompt(this.buildTranscriptChunk(chunk)) }])),
+      )
+      for (const response of responses) {
+        const parsed = this.parseJson<MeetingExtraction>(response)
+        if (parsed) allResults.push(parsed)
+        // else: skip malformed chunks rather than failing the whole extraction
       }
     }
 
@@ -153,25 +190,14 @@ Return only valid JSON.`
       content: `${instruction}\n\nMeeting: ${input.title}\n\nTranscript:\n${transcriptText}\n\nReturn JSON: {"overview": "string", "sections": [{"title": "string", "content": "string"}]}`,
     }])
 
-    try {
-      const parsed = JSON.parse(response) as { overview?: string; sections?: Array<{ title: string; content: string }> }
-      return {
-        templateKey: input.templateKey,
-        overview: parsed.overview ?? response,
-        sections: parsed.sections ?? [{ title: 'Summary', content: response }],
-        modelProvider: 'openai',
-        modelName: this.model,
-        promptVersion: 'v1',
-      }
-    } catch {
-      return {
-        templateKey: input.templateKey,
-        overview: response,
-        sections: [{ title: 'Summary', content: response }],
-        modelProvider: 'openai',
-        modelName: this.model,
-        promptVersion: 'v1',
-      }
+    const parsed = this.parseJson<{ overview?: string; sections?: Array<{ title: string; content: string }> }>(response)
+    return {
+      templateKey: input.templateKey,
+      overview: parsed?.overview ?? response,
+      sections: parsed?.sections ?? [{ title: 'Summary', content: response }],
+      modelProvider: 'openai',
+      modelName: this.model,
+      promptVersion: 'v1',
     }
   }
 
@@ -191,11 +217,7 @@ Return only valid JSON.`
       },
     ])
 
-    try {
-      return JSON.parse(response) as AskMeetingAnswer
-    } catch {
-      return { answer: response, citations: [] }
-    }
+    return this.parseJson<AskMeetingAnswer>(response) ?? { answer: response, citations: [] }
   }
 
   async embed(texts: string[]): Promise<number[][]> {

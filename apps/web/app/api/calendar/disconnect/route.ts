@@ -21,5 +21,8 @@ export async function POST() {
       )
     )
 
-  return NextResponse.json({ ok: true })
+  // This is submitted from a <form>, so redirect back to the settings page (303 → GET) rather
+  // than leaving the user staring at raw JSON.
+  const appUrl = process.env['APP_URL'] ?? 'http://localhost:3000'
+  return NextResponse.redirect(`${appUrl}/app/settings/calendar?disconnected=1`, 303)
 }

@@ -1,6 +1,10 @@
 import { getDb } from '@fathom/db'
 import { meetings, captureSessions, calendarEvents, userCapturePreferences, users } from '@fathom/db/schema'
-import { eq } from 'drizzle-orm'
+import { eq, and, notInArray, desc } from 'drizzle-orm'
+
+// A capture session in any of these states is finished — a new bot may be scheduled. Anything
+// else means a bot is already scheduled or live, so we must not schedule a second one.
+const TERMINAL_CAPTURE_STATUSES = ['done', 'failed', 'denied', 'cancelled'] as const
 import { validateGoogleMeetUrl, evaluateCaptureDecision, classifyMeeting } from '@fathom/core'
 import { RecallCaptureProvider } from '@fathom/integrations'
 import { meetingLifecycle } from './meeting-lifecycle-service'
@@ -46,6 +50,22 @@ export class CaptureOrchestrationService {
       return { success: false, error: decision.reason }
     }
 
+    // Dedup: never schedule a second bot when one is already scheduled or live for this meeting.
+    const [activeSession] = await db
+      .select({ id: captureSessions.id })
+      .from(captureSessions)
+      .where(
+        and(
+          eq(captureSessions.meetingId, meetingId),
+          notInArray(captureSessions.status, [...TERMINAL_CAPTURE_STATUSES]),
+        ),
+      )
+      .limit(1)
+
+    if (activeSession) {
+      return { success: true }
+    }
+
     try {
       const provider = getCaptureProvider()
       const session = await provider.schedule({
@@ -84,6 +104,22 @@ export class CaptureOrchestrationService {
     if (!meeting) return { success: false, error: 'Meeting not found' }
     if (!meeting.meetingUrl) return { success: false, error: 'No meeting URL' }
 
+    // Dedup: don't spin up a second bot if one is already scheduled or live for this meeting.
+    const [activeSession] = await db
+      .select({ id: captureSessions.id })
+      .from(captureSessions)
+      .where(
+        and(
+          eq(captureSessions.meetingId, meetingId),
+          notInArray(captureSessions.status, [...TERMINAL_CAPTURE_STATUSES]),
+        ),
+      )
+      .limit(1)
+
+    if (activeSession) {
+      return { success: true }
+    }
+
     try {
       const provider = getCaptureProvider()
       const session = await provider.startNow({
@@ -116,7 +152,7 @@ export class CaptureOrchestrationService {
       .select()
       .from(captureSessions)
       .where(eq(captureSessions.meetingId, meetingId))
-      .orderBy(captureSessions.createdAt)
+      .orderBy(desc(captureSessions.createdAt)) // newest session — the one that's actually live
       .limit(1)
 
     if (log?.providerBotId) {

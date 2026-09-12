@@ -69,17 +69,19 @@ export async function POST() {
     }
   }
 
+  const appUrl = process.env['APP_URL'] ?? 'http://localhost:3000'
   try {
-    const { created, updated, cancelled, total } = await syncUpcomingMeetings(session.user.id, accessToken, connection.id)
+    const { created, updated } = await syncUpcomingMeetings(session.user.id, accessToken, connection.id)
 
     await db
       .update(calendarConnections)
       .set({ lastSyncedAt: new Date(), updatedAt: new Date() })
       .where(eq(calendarConnections.id, connection.id))
 
-    return NextResponse.json({ ok: true, created, updated, cancelled, total })
+    // Submitted from a <form> — redirect back to settings (303 → GET) with a result summary.
+    return NextResponse.redirect(`${appUrl}/app/settings/calendar?synced=${created + updated}`, 303)
   } catch (err) {
     console.error('Calendar sync error:', err)
-    return NextResponse.json({ error: 'Sync failed' }, { status: 500 })
+    return NextResponse.redirect(`${appUrl}/app/settings/calendar?error=sync_failed`, 303)
   }
 }

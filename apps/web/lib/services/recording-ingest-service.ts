@@ -1,6 +1,6 @@
 import { getDb } from '@fathom/db'
 import { meetings, transcriptSegments } from '@fathom/db/schema'
-import { eq } from 'drizzle-orm'
+import { eq, and, notInArray } from 'drizzle-orm'
 import { runSummaryGenerate } from './summary-generate-service'
 
 export async function runRecordingIngest(meetingId: string, recallBotId: string): Promise<void> {
@@ -9,6 +9,20 @@ export async function runRecordingIngest(meetingId: string, recallBotId: string)
   const [meeting] = await db.select().from(meetings).where(eq(meetings.id, meetingId)).limit(1)
   if (!meeting) {
     console.error('[recording-ingest] Meeting not found:', meetingId)
+    return
+  }
+
+  // Atomically claim this meeting for ingest. Both `transcript.done` and `bot.done` (and the
+  // reconcile cron) can call this for the same meeting; the claim ensures exactly one run
+  // proceeds and we never double-generate a summary or double-insert transcript rows.
+  const claimed = await db
+    .update(meetings)
+    .set({ status: 'processing', updatedAt: new Date() })
+    .where(and(eq(meetings.id, meetingId), notInArray(meetings.status, ['processing', 'ready'])))
+    .returning({ id: meetings.id })
+
+  if (claimed.length === 0) {
+    console.log('[recording-ingest] Meeting already finalized or in progress, skipping:', meetingId)
     return
   }
 

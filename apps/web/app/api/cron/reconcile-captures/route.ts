@@ -31,25 +31,36 @@ async function runReconcile() {
 
   const { RecallCaptureProvider } = await import('@fathom/integrations')
   const recall = new RecallCaptureProvider()
+  const { runRecordingIngest } = await import('@/lib/services/recording-ingest-service')
 
+  let recovered = 0
   for (const row of activeMeetings) {
     if (!row.providerBotId) continue
     try {
       const session = await recall.getSession(row.providerBotId)
 
-      if (session.status === 'done' && !['ended', 'processing', 'ready'].includes(row.status)) {
-        console.log(`[reconcile] Fixing stuck meeting ${row.meetingId}: provider=done local=${row.status}`)
+      if (session.status === 'done' && row.status !== 'ready') {
+        // The call is done on Recall's side but we never finalized locally — the finalize webhook
+        // was missed or its ingest was killed. runRecordingIngest is idempotent (it self-claims),
+        // so this safely fetches the transcript and generates the summary. This is the recovery
+        // path that keeps a missed webhook from stranding a meeting forever.
+        console.log(`[reconcile] Finalizing stuck meeting ${row.meetingId}: provider=done local=${row.status}`)
+        await runRecordingIngest(row.meetingId, row.providerBotId)
+        recovered++
+      } else if ((session.status === 'failed' || session.status === 'denied') && row.status !== 'ready') {
+        // A bot that failed/was denied should not sit in an active status forever.
         await db
           .update(meetings)
-          .set({ status: 'ended', updatedAt: new Date() })
+          .set({ status: session.status, updatedAt: new Date() })
           .where(eq(meetings.id, row.meetingId))
+        recovered++
       }
     } catch (err) {
       console.error(`[reconcile] Error checking ${row.meetingId}:`, err)
     }
   }
 
-  return { checked: activeMeetings.length }
+  return { checked: activeMeetings.length, recovered }
 }
 
 export async function GET(request: Request) {
