@@ -1,13 +1,17 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { format } from 'date-fns'
-import { Plus, Calendar, Clock, Users, ArrowRight } from 'lucide-react'
+import { Plus, Calendar, Clock, Users, ArrowRight, AlertTriangle } from 'lucide-react'
 import { auth } from '@/lib/auth'
 import { getMeetingsForUser } from '@/lib/services/meeting-service'
+import { getDb } from '@fathom/db'
+import { calendarConnections } from '@fathom/db/schema'
+import { eq } from 'drizzle-orm'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ParticipantAvatars } from '@/components/meeting/participant-avatars'
+import { CaptureToggle } from '@/components/meeting/capture-toggle'
 import { formatDuration } from '@/lib/utils'
 import { MEETING_STATUS_LABELS } from '@fathom/core'
 import type { MeetingStatus } from '@fathom/core'
@@ -18,7 +22,11 @@ export default async function DashboardPage() {
   const session = await auth()
   if (!session?.user?.id) redirect('/login')
 
-  const allMeetings = await getMeetingsForUser(session.user.id, 20).catch(() => [])
+  const [allMeetings, [connection]] = await Promise.all([
+    getMeetingsForUser(session.user.id, 20).catch(() => []),
+    getDb().select({ status: calendarConnections.status }).from(calendarConnections).where(eq(calendarConnections.userId, session.user.id)).limit(1),
+  ])
+  const needsReauth = connection?.status === 'needs_reauth' || connection?.status === 'error'
 
   const now = new Date()
   const upcomingMeetings = allMeetings.filter(
@@ -78,8 +86,24 @@ export default async function DashboardPage() {
         </Link>
       ))}
 
+      {/* Calendar needs reconnecting */}
+      {needsReauth && (
+        <div className="border border-amber-200 rounded-xl p-5 mb-6 bg-amber-50 flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-amber-900">Reconnect Google Calendar</p>
+            <p className="text-sm text-amber-800 mt-0.5">
+              We can no longer see your upcoming meetings. Your past meetings are still available below.
+            </p>
+            <Link href="/api/calendar/connect" className="inline-block mt-3 text-sm font-medium text-amber-900 hover:underline">
+              Reconnect →
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* No calendar connected */}
-      {allMeetings.length === 0 && (
+      {allMeetings.length === 0 && !needsReauth && (
         <Card className="mb-6">
           <CardContent className="p-6 text-center">
             <Calendar className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
@@ -128,6 +152,9 @@ export default async function DashboardPage() {
                       {MEETING_STATUS_LABELS[meeting.status as MeetingStatus] ?? meeting.status}
                     </Badge>
                   </div>
+                  {meeting.status === 'scheduled' && (
+                    <CaptureToggle meetingId={meeting.id} captureOverride={meeting.captureOverride} />
+                  )}
                 </div>
               </Link>
             ))}

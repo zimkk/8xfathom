@@ -4,8 +4,9 @@ import { getDb } from '@fathom/db'
 import { meetings, calendarConnections } from '@fathom/db/schema'
 import { eq, and, gte, lte, desc } from 'drizzle-orm'
 import Link from 'next/link'
-import { Calendar, Plus, Clock } from 'lucide-react'
+import { Calendar, Plus, Clock, AlertTriangle } from 'lucide-react'
 import { formatDuration } from '@fathom/core'
+import { CaptureToggle } from '@/components/meeting/capture-toggle'
 
 function formatDate(date: Date) {
   return date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
@@ -39,16 +40,12 @@ export default async function CalendarPage() {
     db
       .select()
       .from(calendarConnections)
-      .where(
-        and(
-          eq(calendarConnections.userId, session.user.id),
-          eq(calendarConnections.status, 'connected')
-        )
-      )
+      .where(eq(calendarConnections.userId, session.user.id))
       .limit(1),
   ])
 
   const isConnected = connection[0]?.status === 'connected'
+  const needsReauth = connection[0]?.status === 'needs_reauth' || connection[0]?.status === 'error'
 
   // Group by date
   const grouped: Record<string, typeof upcomingMeetings> = {}
@@ -72,7 +69,27 @@ export default async function CalendarPage() {
         </Link>
       </div>
 
-      {!isConnected && (
+      {needsReauth && (
+        <div className="border border-amber-200 rounded-xl p-5 mb-6 bg-amber-50">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-amber-900">Reconnect Google Calendar</p>
+              <p className="text-sm text-amber-800 mt-0.5">
+                We can no longer see your upcoming meetings. Your past meetings are still available.
+              </p>
+              <Link
+                href="/api/calendar/connect"
+                className="inline-block mt-3 text-sm font-medium text-amber-900 hover:underline"
+              >
+                Reconnect →
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!isConnected && !needsReauth && (
         <div className="border rounded-xl p-5 mb-6 bg-muted/30">
           <div className="flex items-start gap-3">
             <Calendar className="h-5 w-5 text-primary mt-0.5 shrink-0" />
@@ -124,13 +141,16 @@ export default async function CalendarPage() {
                             )}
                           </div>
                         </div>
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                          m.status === 'scheduled' ? 'bg-blue-50 text-blue-600' :
-                          m.status === 'recording' ? 'bg-red-50 text-red-600' :
-                          'bg-muted text-muted-foreground'
-                        }`}>
-                          {m.status}
-                        </span>
+                        {m.status === 'scheduled' ? (
+                          <CaptureToggle meetingId={m.id} captureOverride={m.captureOverride} />
+                        ) : (
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                            m.status === 'recording' ? 'bg-red-50 text-red-600' :
+                            'bg-muted text-muted-foreground'
+                          }`}>
+                            {m.status}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </Link>
