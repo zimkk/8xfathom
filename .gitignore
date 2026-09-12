@@ -51,6 +51,7 @@ test-results/
 # pnpm
 pnpm-lock.yaml.bak
 
-# Markdown files (except README)
+# Markdown files (except README and agent logs)
 *.md
 !README.md
+!.agent-logs/**/*.md
