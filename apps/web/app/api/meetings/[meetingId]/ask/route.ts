@@ -43,7 +43,7 @@ export async function POST(
 
   // Check if AI is configured
   const aiApiKey = process.env['AI_API_KEY']
-  if (!aiApiKey || process.env['USE_MOCK_INTEGRATIONS'] === 'true') {
+  if (!aiApiKey) {
     return NextResponse.json({
       answer:
         'AI answering requires a configured AI provider. This meeting has a full transcript — you can search it directly in the Transcript tab.',

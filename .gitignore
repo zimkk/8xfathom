@@ -7,6 +7,7 @@ node_modules/
 .env.local
 .env.production
 .env.staging
+.env.vercel
 *.env
 
 # Next.js

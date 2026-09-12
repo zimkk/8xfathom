@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { waitUntil } from '@vercel/functions'
-import { createHmac } from 'crypto'
+import { createHmac, timingSafeEqual } from 'crypto'
 import { getDb } from '@fathom/db'
 import { meetings, captureSessions, transcriptSegments } from '@fathom/db/schema'
 import { eq, desc } from 'drizzle-orm'
@@ -9,63 +9,55 @@ import type { MeetingStatus } from '@fathom/core'
 // Vercel Hobby: 60s cap. waitUntil budget: ~5s transcript fetch + ~30s OpenAI = well within limit.
 // On Pro, set maxDuration = 300 and re-enable recording download in recording-ingest-service.ts.
 
-function verifySignature(payload: string, signature: string, secret: string): boolean {
-  const hmac = createHmac('sha256', secret)
-  hmac.update(payload)
-  const expected = hmac.digest('hex')
-  if (signature.length !== expected.length) return false
-  let diff = 0
-  for (let i = 0; i < signature.length; i++) {
-    diff |= signature.charCodeAt(i) ^ expected.charCodeAt(i)
-  }
-  return diff === 0
+// Recall webhooks use the Svix signing scheme: secret is `whsec_<base64>`, signed content is
+// `${id}.${timestamp}.${body}`, and the signature header carries space-separated `v1,<base64sig>` values.
+// https://docs.recall.ai/docs/authenticating-requests-from-recallai
+function verifySignature(payload: string, headers: Headers, secret: string): boolean {
+  const msgId = headers.get('webhook-id') ?? headers.get('svix-id')
+  const msgTimestamp = headers.get('webhook-timestamp') ?? headers.get('svix-timestamp')
+  const sigHeader = headers.get('webhook-signature') ?? headers.get('svix-signature')
+  if (!msgId || !msgTimestamp || !sigHeader) return false
+
+  const base64Secret = secret.startsWith('whsec_') ? secret.slice('whsec_'.length) : secret
+  const key = Buffer.from(base64Secret, 'base64')
+  const toSign = `${msgId}.${msgTimestamp}.${payload}`
+  const expected = createHmac('sha256', key).update(toSign).digest('base64')
+  const expectedBytes = Buffer.from(expected, 'base64')
+
+  return sigHeader.split(' ').some((candidate) => {
+    const [version, sig] = candidate.split(',')
+    if (version !== 'v1' || !sig) return false
+    const sigBytes = Buffer.from(sig, 'base64')
+    if (sigBytes.length !== expectedBytes.length) return false
+    return timingSafeEqual(sigBytes, expectedBytes)
+  })
 }
 
-function recallStatusToMeetingStatus(code: string): MeetingStatus | null {
-  const map: Record<string, MeetingStatus> = {
-    joining_call: 'bot_starting',
-    waiting_for_admission: 'waiting_for_admission',
-    in_call_not_recording: 'bot_starting',
-    in_call_recording: 'recording',
-    call_ended: 'ended',
-    done: 'ended',
-    analysis_in_progress: 'processing',
-    analysis_done: 'processing',
-    error: 'failed',
-    recording_permission_denied: 'failed',
-    timeout_waiting_for_meeting_start: 'failed',
-    timeout_waiting_for_admission: 'failed',
-  }
-  return map[code] ?? null
+// Current Recall API sends one distinct event per bot status, not a single `bot.status_change`
+// with a nested code. https://docs.recall.ai/docs/bot-status-change-events
+const STATUS_EVENT_MAP: Record<string, MeetingStatus> = {
+  'bot.joining_call': 'bot_starting',
+  'bot.in_waiting_room': 'waiting_for_admission',
+  'bot.in_call_not_recording': 'bot_starting',
+  'bot.in_call_recording': 'recording',
+  'bot.call_ended': 'ended',
+  'bot.done': 'ended',
+  'bot.fatal': 'failed',
+  'bot.recording_permission_denied': 'failed',
 }
 
-// Recall status codes where recording + transcript are fully available
-const INGEST_TRIGGER_CODES = new Set(['analysis_done', 'done'])
-
-type RecallWebhookEvent =
-  | {
-      event: 'bot.status_change'
-      data: {
-        bot_id: string
-        status: { code: string; created_at: string; sub_code?: string }
-        metadata?: Record<string, string>
-      }
+type RecallEvent = {
+  event: string
+  data: {
+    bot?: { id: string; metadata?: Record<string, string> }
+    data?: {
+      words?: Array<{ text: string; start_timestamp?: { relative: number }; end_timestamp?: { relative: number } }>
+      participant?: { id: number; name: string | null }
+      code?: string
+      sub_code?: string | null
     }
-  | {
-      event: 'bot.transcript.data'
-      data: {
-        bot_id: string
-        transcript: {
-          speaker: string
-          words: Array<{ start_time: number; end_time: number; text: string }>
-          is_final: boolean
-        }
-      }
-    }
-  | {
-      event: string
-      data: { bot_id: string; [key: string]: unknown }
-    }
+  }
+}
 
 export async function POST(request: Request) {
   const secret = process.env['RECALL_WEBHOOK_SECRET']
@@ -74,27 +66,29 @@ export async function POST(request: Request) {
   }
 
   const rawBody = await request.text()
-  const signature = request.headers.get('x-recall-signature') ?? ''
 
-  if (!verifySignature(rawBody, signature, secret)) {
+  if (!verifySignature(rawBody, request.headers, secret)) {
     return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
   }
 
-  let event: RecallWebhookEvent
+  let event: RecallEvent
   try {
     event = JSON.parse(rawBody)
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const db = getDb()
-  const { event: eventType, data } = event
+  const botId = event.data.bot?.id
+  if (!botId) {
+    return NextResponse.json({ ok: true, note: 'no_bot_id' })
+  }
 
-  // Find the capture session by recall bot ID
+  const db = getDb()
+
   const [session] = await db
     .select({ meetingId: captureSessions.meetingId, id: captureSessions.id })
     .from(captureSessions)
-    .where(eq(captureSessions.providerBotId, data.bot_id))
+    .where(eq(captureSessions.providerBotId, botId))
     .limit(1)
 
   if (!session) {
@@ -104,41 +98,34 @@ export async function POST(request: Request) {
 
   const { meetingId } = session
 
-  // --- bot.status_change ---
-  if (eventType === 'bot.status_change' && 'status' in data && data.status) {
-    const statusData = (data as Extract<RecallWebhookEvent, { event: 'bot.status_change' }>['data']).status
-    const newStatus = recallStatusToMeetingStatus(statusData.code)
-
-    if (newStatus) {
-      await db
-        .update(meetings)
-        .set({
-          status: newStatus,
-          ...(newStatus === 'recording' ? { actualStartedAt: new Date() } : {}),
-          ...(newStatus === 'ended' ? { actualEndedAt: new Date() } : {}),
-          updatedAt: new Date(),
-        })
-        .where(eq(meetings.id, meetingId))
-    }
-
-    // Only kick off ingest once Recall has finished all processing (recording + transcript ready)
-    if (INGEST_TRIGGER_CODES.has(statusData.code) && process.env['USE_MOCK_INTEGRATIONS'] !== 'true') {
-      const { runRecordingIngest } = await import('@/lib/services/recording-ingest-service')
-      waitUntil(runRecordingIngest(meetingId, data.bot_id))
-    }
+  // --- bot status events ---
+  const newStatus = STATUS_EVENT_MAP[event.event]
+  if (newStatus) {
+    await db
+      .update(meetings)
+      .set({
+        status: newStatus,
+        ...(newStatus === 'recording' ? { actualStartedAt: new Date() } : {}),
+        ...(newStatus === 'ended' ? { actualEndedAt: new Date() } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(meetings.id, meetingId))
   }
 
-  // --- bot.transcript.data (real-time segments) ---
-  if (eventType === 'bot.transcript.data') {
-    const transcriptData = (data as Extract<RecallWebhookEvent, { event: 'bot.transcript.data' }>['data']).transcript
+  // Transcript is ready to fetch and ingest once Recall finishes processing it
+  if (event.event === 'transcript.done') {
+    const { runRecordingIngest } = await import('@/lib/services/recording-ingest-service')
+    waitUntil(runRecordingIngest(meetingId, botId))
+  }
 
-    if (transcriptData?.is_final && transcriptData.words?.length > 0) {
-      const words = transcriptData.words
-      const startMs = Math.round((words[0]?.start_time ?? 0) * 1000)
-      const endMs = Math.round((words[words.length - 1]?.end_time ?? 0) * 1000)
+  // --- real-time finalized transcript segments ---
+  if (event.event === 'transcript.data') {
+    const words = event.data.data?.words ?? []
+    if (words.length > 0) {
+      const startMs = Math.round((words[0]?.start_timestamp?.relative ?? 0) * 1000)
+      const endMs = Math.round((words[words.length - 1]?.end_timestamp?.relative ?? 0) * 1000)
       const text = words.map((w) => w.text).join(' ')
 
-      // Get the current max sequence so we append correctly
       const [last] = await db
         .select({ sequence: transcriptSegments.sequence })
         .from(transcriptSegments)
@@ -151,7 +138,7 @@ export async function POST(request: Request) {
       await db.insert(transcriptSegments).values({
         meetingId,
         sequence: nextSeq,
-        speakerName: transcriptData.speaker,
+        speakerName: event.data.data?.participant?.name ?? 'Unknown',
         startMs,
         endMs,
         text,

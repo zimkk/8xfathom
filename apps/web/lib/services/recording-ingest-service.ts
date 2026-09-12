@@ -63,7 +63,7 @@ export async function runRecordingIngest(meetingId: string, recallBotId: string)
     .where(eq(meetings.id, meetingId))
 
   // Chain directly into summary generation — no queue hop needed
-  if (process.env['AI_API_KEY'] && process.env['USE_MOCK_INTEGRATIONS'] !== 'true') {
+  if (process.env['AI_API_KEY']) {
     try {
       await runSummaryGenerate(meetingId)
     } catch (err) {
