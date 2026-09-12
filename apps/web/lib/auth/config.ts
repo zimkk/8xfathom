@@ -15,8 +15,9 @@ if (process.env['GOOGLE_CLIENT_ID'] && process.env['GOOGLE_CLIENT_SECRET']) {
       clientSecret: process.env['GOOGLE_CLIENT_SECRET'],
       authorization: {
         params: {
-          scope: 'openid email profile',
-          prompt: 'select_account',
+          scope: 'openid email profile https://www.googleapis.com/auth/calendar.readonly',
+          access_type: 'offline',
+          prompt: 'consent select_account',
         },
       },
     })
