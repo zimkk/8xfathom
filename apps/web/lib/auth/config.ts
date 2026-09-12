@@ -13,14 +13,11 @@ if (process.env['GOOGLE_CLIENT_ID'] && process.env['GOOGLE_CLIENT_SECRET']) {
     Google({
       clientId: process.env['GOOGLE_CLIENT_ID'],
       clientSecret: process.env['GOOGLE_CLIENT_SECRET'],
-      // Login stays scoped to identity only. Calendar access (calendar.readonly)
-      // is requested separately via /api/calendar/connect from the dashboard —
-      // temporarily split from the single-consent flow to isolate a bug where
-      // granting calendar access during login bounced users back to /login.
       authorization: {
         params: {
-          scope: 'openid email profile',
-          prompt: 'select_account',
+          scope: 'openid email profile https://www.googleapis.com/auth/calendar.readonly',
+          access_type: 'offline',
+          prompt: 'consent select_account',
         },
       },
     })
